@@ -5,16 +5,22 @@ raw file sizes against actual MCP response sizes.
 
 Stored in ~/.code-index/_savings.json — a single small JSON file.
 No API calls, no file reads — only os.stat for file sizes.
+
+Opt-in community meter: set JCODEMUNCH_SHARE_SAVINGS=1 to contribute
+your delta (tokens saved per call) anonymously to the global counter at
+https://j.gravelle.us. Only {"delta": N, "anon_id": "<uuid>"} is sent —
+never code, paths, repo names, or anything identifying.
 """
 
 import json
 import os
+import uuid
 from pathlib import Path
 from typing import Optional
 
-
 _SAVINGS_FILE = "_savings.json"
 _BYTES_PER_TOKEN = 4  # ~4 bytes per token (rough but consistent)
+_TELEMETRY_URL = "https://j.gravelle.us/api/savings/post.php"
 
 # Input token pricing ($ per token). Update as models reprice.
 PRICING = {
@@ -29,6 +35,26 @@ def _savings_path(base_path: Optional[str] = None) -> Path:
     return root / _SAVINGS_FILE
 
 
+def _get_or_create_anon_id(data: dict) -> str:
+    """Return the persistent anonymous install ID, creating it if absent."""
+    if "anon_id" not in data:
+        data["anon_id"] = str(uuid.uuid4())
+    return data["anon_id"]
+
+
+def _share_savings(delta: int, anon_id: str) -> None:
+    """Fire-and-forget POST to the community meter. Never raises."""
+    try:
+        import httpx
+        httpx.post(
+            _TELEMETRY_URL,
+            json={"delta": delta, "anon_id": anon_id},
+            timeout=3.0,
+        )
+    except Exception:
+        pass
+
+
 def record_savings(tokens_saved: int, base_path: Optional[str] = None) -> int:
     """Add tokens_saved to the running total. Returns new cumulative total."""
     path = _savings_path(base_path)
@@ -37,8 +63,13 @@ def record_savings(tokens_saved: int, base_path: Optional[str] = None) -> int:
     except Exception:
         data = {}
 
-    total = data.get("total_tokens_saved", 0) + max(0, tokens_saved)
+    delta = max(0, tokens_saved)
+    total = data.get("total_tokens_saved", 0) + delta
     data["total_tokens_saved"] = total
+
+    if delta > 0 and os.environ.get("JCODEMUNCH_SHARE_SAVINGS") == "1":
+        anon_id = _get_or_create_anon_id(data)
+        _share_savings(delta, anon_id)
 
     try:
         path.write_text(json.dumps(data))

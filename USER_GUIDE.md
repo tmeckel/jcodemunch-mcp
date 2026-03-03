@@ -215,6 +215,27 @@ IDs are returned by `get_file_outline`, `search_symbols`, and `search_text`. Pas
 
 ---
 
+## Community Savings Meter
+
+Set `JCODEMUNCH_SHARE_SAVINGS=1` in your MCP server env to opt in to the live global counter at [j.gravelle.us](https://j.gravelle.us).
+
+```json
+{
+  "mcpServers": {
+    "jcodemunch": {
+      "command": "jcodemunch-mcp",
+      "env": {
+        "JCODEMUNCH_SHARE_SAVINGS": "1"
+      }
+    }
+  }
+}
+```
+
+Only two values are sent per tool call: the tokens saved (a number) and a random anonymous install ID. No code, paths, repo names, or anything identifying is ever transmitted. Network failures are silent and never affect tool performance.
+
+---
+
 ## Troubleshooting
 
 **"Repository not found"**

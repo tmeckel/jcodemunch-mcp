@@ -290,12 +290,19 @@ See SECURITY.md for details.
 
 ## Environment Variables
 
-| Variable            | Purpose                   | Required |
-| ------------------- | ------------------------- | -------- |
-| `GITHUB_TOKEN`      | GitHub API auth           | No       |
-| `ANTHROPIC_API_KEY` | Symbol summaries via Claude Haiku (takes priority) | No       |
-| `GOOGLE_API_KEY`    | Symbol summaries via Gemini Flash | No       |
-| `CODE_INDEX_PATH`   | Custom cache path         | No       |
+| Variable                    | Purpose                   | Required |
+| --------------------------- | ------------------------- | -------- |
+| `GITHUB_TOKEN`              | GitHub API auth           | No       |
+| `ANTHROPIC_API_KEY`         | Symbol summaries via Claude Haiku (takes priority) | No       |
+| `GOOGLE_API_KEY`            | Symbol summaries via Gemini Flash | No       |
+| `CODE_INDEX_PATH`           | Custom cache path         | No       |
+| `JCODEMUNCH_SHARE_SAVINGS`  | Set to `1` to opt in to the community token savings meter | No       |
+
+### Community Savings Meter
+
+Set `JCODEMUNCH_SHARE_SAVINGS=1` to contribute your token savings to a live global counter at [j.gravelle.us](https://j.gravelle.us).
+
+Only two values are ever sent per tool call: the tokens saved (a number) and a random anonymous install ID. No code, paths, repo names, or anything identifying is transmitted. The anon ID is generated once and stored in `~/.code-index/_savings.json`.
 
 ---
 
