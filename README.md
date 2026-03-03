@@ -211,7 +211,30 @@ search_text:      { "repo": "owner/repo", "query": "TODO" }
 | `get_repo_outline` | High-level repo overview    |
 | `invalidate_cache` | Remove cached index         |
 
-All tool responses include a `_meta` envelope with timing and metadata.
+Every tool response includes a `_meta` envelope with timing, token savings, and cost avoided:
+
+```json
+"_meta": {
+  "timing_ms": 4.3,
+  "tokens_saved": 48153,
+  "total_tokens_saved": 1280837,
+  "cost_avoided": { "claude_opus": 0.24, "gpt5_latest": 0.08 },
+  "total_cost_avoided": { "claude_opus": 6.40, "gpt5_latest": 2.24 }
+}
+```
+
+`total_tokens_saved` and `total_cost_avoided` accumulate across all tool calls and persist to `~/.code-index/_savings.json`.
+
+---
+
+## Recent Updates
+
+**v0.2.8** — Estimated cost avoided added to every `_meta` response (`cost_avoided`, `total_cost_avoided`)
+**v0.2.7** — Security fix: `.claude/` excluded from sdist; structural CI guardrails prevent credential bundling
+**v0.2.5** — Path traversal hardening in `IndexStore`; `jcodemunch-mcp --help` now works
+**v0.2.4** — Live token savings counter (`tokens_saved`, `total_tokens_saved` in every `_meta`)
+**v0.2.3** — Google Gemini Flash support (`GOOGLE_API_KEY`); auto-selects between Anthropic and Gemini
+**v0.2.2** — PHP language support
 
 ---
 
@@ -235,11 +258,11 @@ See LANGUAGE_SUPPORT.md for full semantics.
 
 Built-in protections:
 
-- Path traversal prevention  
-- Symlink escape protection  
-- Secret file exclusion (`.env`, `*.pem`, etc.)  
-- Binary detection  
-- Configurable file size limits  
+- Path traversal prevention (owner/name sanitization + `_safe_content_path` enforcement)
+- Symlink escape protection
+- Secret file exclusion (`.env`, `*.pem`, etc.)
+- Binary detection
+- Configurable file size limits
 
 See SECURITY.md for details.
 
@@ -278,13 +301,11 @@ See SECURITY.md for details.
 
 ## Documentation
 
-- USER_GUIDE.md  
-- ARCHITECTURE.md  
-- SPEC.md  
-- SECURITY.md  
-- SYMBOL_SPEC.md  
-- CACHE_SPEC.md  
-- LANGUAGE_SUPPORT.md  
+- USER_GUIDE.md
+- ARCHITECTURE.md
+- SPEC.md
+- SECURITY.md
+- LANGUAGE_SUPPORT.md
 
 ---
 
