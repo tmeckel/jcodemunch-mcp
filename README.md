@@ -1,3 +1,6 @@
+## FREE FOR PERSONAL USE
+**Use it to make money, and Uncle J. gets a taste. Fair enough?**
+
 ## Cut code-reading token costs by up to **99%**
 
 Most AI agents explore repositories the expensive way:
