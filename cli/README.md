@@ -16,6 +16,26 @@ Finally, MCP is where the ecosystem is going. Every major AI client — Claude D
 
 ---
 
+## On "CLI-first" agent frameworks
+
+Projects like [CLI-Anything](https://github.com/HKUDS/CLI-Anything) make a compelling case that CLIs with structured JSON output are the right interface for AI agents to control software that has no API. We agree with the thesis — and it actually clarifies why jCodemunch takes the opposite approach.
+
+CLI-Anything exists to bridge software that *lacks* a native agent interface. When GIMP or Blender ships no MCP server, an LLM-generated CLI with JSON output is the best available option. It is a thoughtful solution to a real gap.
+
+jCodemunch has no gap to bridge. It was written as an MCP server from the first commit. The protocol that CLI-Anything is approximating with JSON output is the same protocol jCodemunch speaks natively:
+
+| | CLI-Anything-style | jCodemunch MCP |
+|---|---|---|
+| Transport | Shell subprocess + stdout | Native MCP protocol |
+| Output | JSON strings, parsed by agent | Structured tool results, typed |
+| Session state | Stateless per invocation | Continuous, accumulated in agent context |
+| Cost accounting | None | `_meta` envelope: `tokens_saved`, `cost_avoided` per call |
+| Ecosystem fit | Bridge for apps with no API | First-class citizen in every MCP client |
+
+The CLI in this directory exists for the same reason CLI-Anything exists: sometimes the native interface is not available (no AI agent in the loop, CI script, terminal session). When that is your situation, use it. When an AI agent is present, it would be a step backwards from the interface jCodemunch was built to provide.
+
+---
+
 ## For those who insist
 
 If you need to drive jCodeMunch from a shell script, a CI pipeline, or a terminal session without an AI agent in the loop, `cli.py` is here for you.
