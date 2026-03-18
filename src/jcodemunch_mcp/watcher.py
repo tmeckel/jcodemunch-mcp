@@ -14,8 +14,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from watchfiles import awatch, Change
-
 from .hook_event import DEFAULT_MANIFEST_PATH, read_manifest
 from .tools.index_folder import index_folder
 from .tools.invalidate_cache import invalidate_cache
@@ -264,6 +262,14 @@ async def _watch_single(
             on_reindex()
     else:
         print(f"  WARNING: initial index failed for {folder_path}: {result.get('error')}", file=sys.stderr)
+
+    try:
+        from watchfiles import awatch, Change
+    except ImportError as exc:
+        raise ImportError(
+            "watchfiles is required for the watch subcommand. "
+            "Install it with: pip install 'jcodemunch-mcp[watch]'"
+        ) from exc
 
     async for changes in awatch(
         folder_path,
@@ -633,6 +639,7 @@ async def watch_claude_worktrees(
         else:
             last_size = 0
 
+        from watchfiles import awatch  # noqa: PLC0415 — lazy import (optional dep)
         async for _changes in awatch(
             str(manifest_path.parent),
             debounce=500,
