@@ -4,6 +4,31 @@ All notable changes to jcodemunch-mcp are documented here.
 
 ## [Unreleased]
 
+## [1.8.3] - 2026-03-18
+
+### Added
+- **`find_importers`: `has_importers` flag** — each result now includes `has_importers: bool`. When `false`, the importer itself has no importers, revealing transitive dead code chains without requiring recursive calls. Implemented as one additional O(n) pass over the import graph; no re-indexing required. Closes #132. Identified via 50-iteration dead code A/B test (#130).
+
+## [1.8.2] - 2026-03-18
+
+### Changed
+- **`get_file_outline` tool description** — now explicitly states "full signatures (including parameter names)" and adds "Use signatures to review naming at parameter granularity without reading the full file." Parameter names were always present in the `signature` field; the description now makes this discoverable. Closes #131.
+
+## [1.8.1] - 2026-03-18
+
+### Fixed
+- **Dynamic `import()` detection in JS/TS/Vue** — `find_importers` now detects Vue Router lazy routes and other code-splitting patterns using `import('specifier')` call syntax. Previously these files appeared to have zero importers and were misclassified as dead. Identified via 50-iteration dead code A/B test (#130, @Mharbulous); 4 Vue view files affected.
+
+## [1.8.0] - 2026-03-18
+
+### Security
+- **Supply-chain integrity check** — `verify_package_integrity()` added to `security.py` and called at startup. Uses `importlib.metadata.packages_distributions()` to identify the distribution that actually owns the running code. If it differs from the canonical `jcodemunch-mcp`, a `SECURITY WARNING` is printed to stderr. Catches the fork-republishing attack class described at https://news.ycombinator.com/item?id=47428217. Silent for source/editable installs.
+
+### Added
+- **`authors` and `[project.urls]`** in `pyproject.toml` — PyPI pages now display official provenance metadata (author, homepage, issue tracker).
+
+## [1.7.9] - 2026-03-18
+
 ### Added
 - **JS/TS const extraction** — top-level `const` and `export const` declarations in JavaScript, TypeScript, and TSX are now indexed as `constant` symbols. Arrow functions and function expressions assigned to consts are correctly skipped (handled by existing function extraction). Accepts all identifier naming conventions for JS/TS.
 - **`index_file` tool** (PR #126, credit: @thellMa) — re-index a single file instantly after editing. Locates the correct index by scanning `source_root` of all indexed repos (picks most specific match), validates security, computes hash + mtime, and exits early if the file is unchanged. Parses with tree-sitter, runs context providers, and calls `incremental_save()` for a surgical single-file update. Registered as a new MCP tool with `path`, `use_ai_summaries`, and `context_providers` parameters.
