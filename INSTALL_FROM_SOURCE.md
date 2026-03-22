@@ -242,6 +242,45 @@ needed.
 
 ---
 
+## Using jCodeMunch with Roo-Code or Kilo-Code (Windows + conda)
+
+If you use Roo-Code or Kilo-Code on Windows and manage Python environments with
+conda, the standard `jcodemunch-mcp` launcher on PATH may not be visible to the
+editor. The cleanest fix is to point the MCP config directly at the conda
+environment's Python interpreter.
+
+### Install
+
+```bash
+conda activate mcp-servers
+pip install jcodemunch-mcp
+```
+
+### MCP server config
+
+Add this to your Roo-Code or Kilo-Code MCP server configuration (replace
+`<your windows username>` and `mcp-servers` with your actual username and env name):
+
+```json
+{
+  "mcpServers": {
+    "jcodemunch": {
+      "command": "C:/Users/<your windows username>/.conda/envs/mcp-servers/python.exe",
+      "args": [
+        "-u",
+        "-m",
+        "jcodemunch_mcp.server"
+      ]
+    }
+  }
+}
+```
+
+The `-u` flag disables stdout buffering so the IDE receives MCP responses
+immediately. The module path is `jcodemunch_mcp.server` (not `jdocmunch_mcp`).
+
+---
+
 ## Optional: Disable telemetry
 
 By default, jCodeMunch sends anonymous usage stats (just a token count +
