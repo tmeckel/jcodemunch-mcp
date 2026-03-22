@@ -62,6 +62,7 @@ LANGUAGE_EXTENSIONS = {
     ".php": "php",
     ".dart": "dart",
     ".cs": "csharp",
+    ".cshtml": "razor",
     ".c": "c",
     ".h": "cpp",
     ".cpp": "cpp",
@@ -487,6 +488,26 @@ CSHARP_SPEC = LanguageSpec(
     container_node_types=["class_declaration", "struct_declaration", "record_declaration", "interface_declaration"],
     constant_patterns=[],
     type_patterns=["interface_declaration", "enum_declaration", "struct_declaration", "delegate_declaration", "record_declaration"],
+)
+
+
+# Razor / ASP.NET views specification
+# NOTE: .cshtml files are mixed-language documents containing Razor directives,
+# HTML markup, optional <script>/<style> blocks, and embedded C# in
+# @functions/@code regions. Extraction is handled by _parse_razor_symbols() in
+# extractor.py, which delegates subregions to the existing C#/JS parsers and
+# emits lightweight symbols for HTML ids, external scripts, and style blocks.
+RAZOR_SPEC = LanguageSpec(
+    ts_language="html",
+    symbol_node_types={},
+    name_fields={},
+    param_fields={},
+    return_type_fields={},
+    docstring_strategy="preceding_comment",
+    decorator_node_type=None,
+    container_node_types=[],
+    constant_patterns=[],
+    type_patterns=[],
 )
 
 
@@ -1308,6 +1329,7 @@ LANGUAGE_REGISTRY = {
     "php": PHP_SPEC,
     "dart": DART_SPEC,
     "csharp": CSHARP_SPEC,
+    "razor": RAZOR_SPEC,
     "c": C_SPEC,
     "swift": SWIFT_SPEC,
     "cpp": CPP_SPEC,

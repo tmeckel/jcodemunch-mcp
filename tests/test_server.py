@@ -58,6 +58,7 @@ async def test_search_symbols_tool_schema():
     assert set(props["kind"]["enum"]) == {"function", "class", "method", "constant", "type", "template", "import"}
     assert "enum" in props["language"]
     assert "cpp" in props["language"]["enum"]
+    assert "razor" in props["language"]["enum"]
 
 
 @pytest.mark.asyncio

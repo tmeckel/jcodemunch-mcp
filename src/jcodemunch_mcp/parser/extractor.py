@@ -30,6 +30,8 @@ def parse_file(content: str, filename: str, language: str) -> list[Symbol]:
         symbols = _parse_elixir_symbols(source_bytes, filename)
     elif language == "blade":
         symbols = _parse_blade_symbols(source_bytes, filename)
+    elif language == "razor":
+        symbols = _parse_razor_symbols(source_bytes, filename)
     elif language == "nix":
         symbols = _parse_nix_symbols(source_bytes, filename)
     elif language == "vue":
@@ -3392,6 +3394,302 @@ def _parse_ejs_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
         ))
 
     return symbols
+
+
+# ---------------------------------------------------------------------------
+# Razor (.cshtml) custom symbol extractor
+# ---------------------------------------------------------------------------
+
+_RAZOR_SCRIPT_RE = re.compile(r"<script\b([^>]*)>(.*?)</script>", re.IGNORECASE | re.DOTALL)
+_RAZOR_STYLE_RE = re.compile(r"<style\b([^>]*)>(.*?)</style>", re.IGNORECASE | re.DOTALL)
+_RAZOR_ID_RE = re.compile(r"""\bid\s*=\s*["']([^"'<>]+)["']""", re.IGNORECASE)
+_RAZOR_SCRIPT_SRC_RE = re.compile(r"""\bsrc\s*=\s*["']([^"'<>]+)["']""", re.IGNORECASE)
+_RAZOR_CODE_BLOCK_RE = re.compile(r"@(?:functions|code)\s*\{", re.IGNORECASE)
+
+
+def _parse_razor_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
+    """Extract symbols from Razor (.cshtml) templates.
+
+    Strategy:
+    - Synthetic view symbol from filename
+    - HTML ids as constant symbols
+    - <script src="..."> as function symbols
+    - Inline <script> blocks re-parsed as JavaScript
+    - @functions/@code blocks re-parsed as C# inside a synthetic shim class
+    - <style> blocks emitted as constant symbols for retrievable structure
+    """
+    from pathlib import Path as _Path
+
+    content = source_bytes.decode("utf-8", errors="replace")
+    view_name = _Path(filename).stem
+    total_lines = content.count("\n") + 1
+    symbols: list[Symbol] = []
+
+    view_symbol = Symbol(
+        id=make_symbol_id(filename, view_name, "class"),
+        file=filename,
+        name=view_name,
+        qualified_name=view_name,
+        kind="class",
+        language="razor",
+        signature=f"view {view_name}",
+        line=1,
+        end_line=total_lines,
+        byte_offset=0,
+        byte_length=len(source_bytes),
+        content_hash=compute_content_hash(source_bytes),
+    )
+    symbols.append(view_symbol)
+
+    def _line_for_offset(offset: int) -> int:
+        return content.count("\n", 0, offset) + 1
+
+    def _rewrap_symbol(
+        sym: Symbol,
+        block_offset: int,
+        line_offset_zero_based: int,
+        block_length: int,
+        parent: Optional[Symbol],
+        qualified_prefix: Optional[str] = None,
+    ) -> Symbol:
+        qualified_name = sym.qualified_name
+        if qualified_prefix:
+            if qualified_name.startswith("__RazorShim__."):
+                qualified_name = qualified_name[len("__RazorShim__."):]
+            qualified_name = f"{qualified_prefix}.{qualified_name}"
+        elif qualified_name.startswith("__RazorShim__."):
+            qualified_name = qualified_name[len("__RazorShim__."):]
+
+        return Symbol(
+            id=make_symbol_id(filename, qualified_name, sym.kind),
+            file=filename,
+            name=sym.name,
+            qualified_name=qualified_name,
+            kind=sym.kind,
+            language=sym.language,
+            signature=sym.signature,
+            docstring=sym.docstring,
+            summary=sym.summary,
+            decorators=list(sym.decorators),
+            keywords=list(sym.keywords),
+            parent=parent.id if parent else None,
+            line=sym.line + line_offset_zero_based,
+            end_line=sym.end_line + line_offset_zero_based,
+            byte_offset=max(block_offset, block_offset + max(0, sym.byte_offset)),
+            byte_length=min(sym.byte_length, block_length),
+            content_hash=sym.content_hash,
+            ecosystem_context=sym.ecosystem_context,
+        )
+
+    # HTML ids and external script refs
+    seen_ids: set[str] = set()
+    for match in _RAZOR_ID_RE.finditer(content):
+        elem_id = match.group(1)
+        if elem_id in seen_ids:
+            continue
+        seen_ids.add(elem_id)
+        line_no = _line_for_offset(match.start())
+        snippet = match.group(0).encode("utf-8")
+        symbols.append(Symbol(
+            id=make_symbol_id(filename, f"{view_name}.{elem_id}", "constant"),
+            file=filename,
+            name=elem_id,
+            qualified_name=f"{view_name}.{elem_id}",
+            kind="constant",
+            language="razor",
+            signature=match.group(0),
+            parent=view_symbol.id,
+            line=line_no,
+            end_line=line_no,
+            byte_offset=match.start(),
+            byte_length=len(snippet),
+            content_hash=compute_content_hash(snippet),
+        ))
+
+    seen_script_src: set[str] = set()
+    script_index = 0
+    for script_match in _RAZOR_SCRIPT_RE.finditer(content):
+        script_index += 1
+        attrs = script_match.group(1) or ""
+        body = script_match.group(2) or ""
+        line_no = _line_for_offset(script_match.start())
+
+        src_match = _RAZOR_SCRIPT_SRC_RE.search(attrs)
+        if src_match:
+            src = src_match.group(1)
+            if src not in seen_script_src:
+                seen_script_src.add(src)
+                name = src.rsplit("/", 1)[-1] if "/" in src else src
+                snippet = src_match.group(0).encode("utf-8")
+                symbols.append(Symbol(
+                    id=make_symbol_id(filename, f"{view_name}.{src}", "function"),
+                    file=filename,
+                    name=name,
+                    qualified_name=f"{view_name}.{src}",
+                    kind="function",
+                    language="razor",
+                    signature=f'<script src="{src}">',
+                    parent=view_symbol.id,
+                    line=line_no,
+                    end_line=line_no,
+                    byte_offset=script_match.start() + src_match.start(),
+                    byte_length=len(snippet),
+                    content_hash=compute_content_hash(snippet),
+                ))
+
+        if body.strip():
+            body_start = script_match.start(2)
+            body_line_offset = _line_for_offset(body_start) - 1
+            js_symbols = parse_file(body, f"{filename}#script{script_index}.js", "javascript")
+            for js_sym in js_symbols:
+                symbols.append(
+                    _rewrap_symbol(
+                        js_sym,
+                        block_offset=body_start,
+                        line_offset_zero_based=body_line_offset,
+                        block_length=len(body.encode("utf-8")),
+                        parent=view_symbol,
+                        qualified_prefix=view_name,
+                    )
+                )
+
+    for idx, style_match in enumerate(_RAZOR_STYLE_RE.finditer(content), start=1):
+        attrs = (style_match.group(1) or "").strip()
+        line_no = _line_for_offset(style_match.start())
+        style_name = f"style_{idx}"
+        tag_sig = "<style>"
+        if attrs:
+            tag_sig = f"<style{attrs}>"
+        snippet = style_match.group(0).encode("utf-8")
+        symbols.append(Symbol(
+            id=make_symbol_id(filename, f"{view_name}.{style_name}", "constant"),
+            file=filename,
+            name=style_name,
+            qualified_name=f"{view_name}.{style_name}",
+            kind="constant",
+            language="razor",
+            signature=tag_sig,
+            parent=view_symbol.id,
+            line=line_no,
+            end_line=_line_for_offset(style_match.end()),
+            byte_offset=style_match.start(),
+            byte_length=len(snippet),
+            content_hash=compute_content_hash(snippet),
+        ))
+
+    for code_match in _RAZOR_CODE_BLOCK_RE.finditer(content):
+        block = _extract_razor_brace_block(content, code_match.end() - 1)
+        if block is None:
+            continue
+        body_start, body_end = block
+        body = content[body_start:body_end]
+        if not body.strip():
+            continue
+
+        wrapper_prefix = "class __RazorShim__ {\n"
+        wrapper_suffix = "\n}"
+        wrapped = f"{wrapper_prefix}{body}{wrapper_suffix}"
+        csharp_symbols = parse_file(wrapped, f"{filename}#razor.cs", "csharp")
+        body_line_offset = _line_for_offset(body_start) - 2
+        body_offset = body_start - len(wrapper_prefix.encode("utf-8"))
+        body_length = len(body.encode("utf-8"))
+
+        for csharp_sym in csharp_symbols:
+            if csharp_sym.name == "__RazorShim__":
+                continue
+            symbols.append(
+                _rewrap_symbol(
+                    csharp_sym,
+                    block_offset=body_offset,
+                    line_offset_zero_based=body_line_offset,
+                    block_length=body_length,
+                    parent=view_symbol,
+                    qualified_prefix=view_name,
+                )
+            )
+
+    symbols.sort(key=lambda s: (s.line, s.byte_offset, s.name))
+    return symbols
+
+
+def _extract_razor_brace_block(content: str, brace_pos: int) -> Optional[tuple[int, int]]:
+    """Return the [start, end) slice inside a Razor @code/@functions block."""
+    if brace_pos < 0 or brace_pos >= len(content) or content[brace_pos] != "{":
+        return None
+
+    depth = 0
+    i = brace_pos
+    in_string = False
+    string_quote = ""
+    verbatim_string = False
+    in_line_comment = False
+    in_block_comment = False
+
+    while i < len(content):
+        ch = content[i]
+        nxt = content[i + 1] if i + 1 < len(content) else ""
+
+        if in_line_comment:
+            if ch == "\n":
+                in_line_comment = False
+            i += 1
+            continue
+
+        if in_block_comment:
+            if ch == "*" and nxt == "/":
+                in_block_comment = False
+                i += 2
+                continue
+            i += 1
+            continue
+
+        if in_string:
+            if verbatim_string:
+                if ch == '"' and nxt == '"':
+                    i += 2
+                    continue
+                if ch == '"':
+                    in_string = False
+                    verbatim_string = False
+            else:
+                if ch == "\\":
+                    i += 2
+                    continue
+                if ch == string_quote:
+                    in_string = False
+            i += 1
+            continue
+
+        if ch == "/" and nxt == "/":
+            in_line_comment = True
+            i += 2
+            continue
+        if ch == "/" and nxt == "*":
+            in_block_comment = True
+            i += 2
+            continue
+        if ch == "@" and nxt == '"':
+            in_string = True
+            string_quote = '"'
+            verbatim_string = True
+            i += 2
+            continue
+        if ch in ("'", '"'):
+            in_string = True
+            string_quote = ch
+            verbatim_string = False
+            i += 1
+            continue
+
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return brace_pos + 1, i
+        i += 1
+
+    return None
 
 
 def _parse_lua_symbols(source_bytes: bytes, filename: str) -> list[Symbol]:
