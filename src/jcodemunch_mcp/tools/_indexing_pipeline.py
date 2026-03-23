@@ -61,6 +61,118 @@ def complete_file_summaries(
     return {file_path: generated.get(file_path, "") for file_path in file_paths}
 
 
+def parse_immediate(
+    files_to_parse: set[str],
+    file_contents: dict[str, str],
+    active_providers: Optional[list[ContextProvider]] = None,
+    warnings: Optional[list[str]] = None,
+) -> tuple[list[Symbol], dict[str, str], dict[str, str], dict[str, list[dict]], list[str]]:
+    """Parse files and enrich, but skip AI summarization for immediate return.
+
+    This is the "deferred" half of the split pipeline: parse now, summarize later.
+    Returns symbols with empty/placeholder summaries (ready for incremental_save),
+    and fires a background thread for AI summarization.
+
+    Args:
+        files_to_parse: Set of rel_paths to process.
+        file_contents: rel_path -> content for files to parse.
+        active_providers: Context providers for enrichment.
+        warnings: Mutable list to append warnings to.
+
+    Returns:
+        (symbols, file_summaries, file_languages, file_imports, no_symbols_files)
+        Symbols have empty summaries — deferred_summarize fills them asynchronously.
+    """
+    if warnings is None:
+        warnings = []
+    providers = active_providers or []
+
+    # 1. Parse each file
+    new_symbols: list[Symbol] = []
+    no_symbols_files: list[str] = []
+
+    for rel_path in sorted(files_to_parse):
+        content = file_contents.get(rel_path)
+        if content is None:
+            continue
+        language = get_language_for_path(rel_path)
+        if not language:
+            no_symbols_files.append(rel_path)
+            continue
+        try:
+            symbols = parse_file(content, rel_path, language)
+            if symbols:
+                new_symbols.extend(symbols)
+            else:
+                no_symbols_files.append(rel_path)
+                logger.debug("NO SYMBOLS (parse_immediate): %s", rel_path)
+        except Exception as e:
+            warnings.append(f"Failed to parse {rel_path}: {e}")
+            logger.debug("PARSE ERROR (parse_immediate): %s — %s", rel_path, e)
+
+    # 2. Enrich with context providers
+    if providers and new_symbols:
+        enrich_symbols(new_symbols, providers)
+
+    # 3. DO NOT summarize here — leave summaries empty for deferred processing.
+    # File-level summaries (from context providers) are still generated.
+    # Symbols keep their default/empty summaries.
+
+    # 4. Build symbols-by-file map, file summaries, file languages
+    symbols_map: dict[str, list] = defaultdict(list)
+    for s in new_symbols:
+        symbols_map[s.file].append(s)
+
+    sorted_files = sorted(files_to_parse)
+    file_summaries = complete_file_summaries(sorted_files, symbols_map, context_providers=providers or None)
+    file_langs = file_languages_for_paths(sorted_files, symbols_map)
+
+    # 5. Extract imports
+    file_imports: dict[str, list[dict]] = {}
+    for rel_path in files_to_parse:
+        content = file_contents.get(rel_path)
+        if content is None:
+            continue
+        language = get_language_for_path(rel_path)
+        if language:
+            imps = extract_imports(content, rel_path, language)
+            if imps:
+                file_imports[rel_path] = imps
+
+    return new_symbols, file_summaries, file_langs, file_imports, no_symbols_files
+
+
+def deferred_summarize(
+    symbols: list[Symbol],
+    file_contents: dict[str, str],
+    use_ai_summaries: bool = True,
+) -> list[Symbol]:
+    """Fill in AI summaries for symbols in a background thread.
+
+    Called by a daemon thread after parse_immediate has saved the initial
+    incremental data with empty summaries. This function calls the AI
+    summarizer and returns updated symbols.
+
+    Args:
+        symbols: Symbols parsed by parse_immediate (with empty summaries).
+        file_contents: rel_path -> content (used for file-level summarization).
+        use_ai_summaries: Whether to use AI summarization.
+
+    Returns:
+        Updated symbols with filled-in AI summaries.
+    """
+    if not symbols or not use_ai_summaries:
+        return symbols
+    # Build file contents map for file-level summarization
+    symbols_map: dict[str, list] = defaultdict(list)
+    for s in symbols:
+        symbols_map[s.file].append(s)
+    # Call AI summarizer
+    summarized = summarize_symbols(symbols, use_ai=True)
+    logger.debug("Deferred summarization complete for %d symbols", len(summarized))
+    return summarized
+
+
 def parse_and_prepare_incremental(
     files_to_parse: set[str],
     file_contents: dict[str, str],

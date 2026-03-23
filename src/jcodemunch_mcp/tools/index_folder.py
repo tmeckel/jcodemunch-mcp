@@ -4,6 +4,7 @@ from collections.abc import Generator
 import hashlib
 import logging
 import os
+import threading
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -127,6 +128,8 @@ from ._indexing_pipeline import (
     complete_file_summaries as _complete_file_summaries,
     parse_and_prepare_incremental,
     parse_and_prepare_full,
+    parse_immediate,
+    deferred_summarize,
 )
 
 
@@ -561,12 +564,12 @@ def index_folder(
                     }
 
                 files_to_parse = set(changed_files) | set(new_files)
+                # Split pipeline: parse immediately (no AI), fire summarization thread.
                 new_symbols, incr_file_summaries, incr_file_languages, incr_file_imports, incremental_no_symbols = (
-                    parse_and_prepare_incremental(
+                    parse_immediate(
                         files_to_parse=files_to_parse,
                         file_contents=raw_files_subset,
                         active_providers=active_providers,
-                        use_ai_summaries=use_ai_summaries,
                         warnings=fast_warnings,
                     )
                 )
@@ -590,6 +593,18 @@ def index_folder(
                     file_hashes=subset_hashes,
                     file_mtimes=all_mtimes,
                 )
+
+                # Fire daemon thread for deferred summarization — index is already saved
+                # with empty summaries; this fills them in without blocking the response.
+                if new_symbols and use_ai_summaries:
+                    _summaries_copy = list(new_symbols)
+                    _contents_copy = dict(raw_files_subset)
+                    _daemon = threading.Thread(
+                        target=lambda: deferred_summarize(_summaries_copy, _contents_copy, use_ai=True),
+                        daemon=True,
+                        name="deferred-summarizer",
+                    )
+                    _daemon.start()
 
                 result = {
                     "success": True,
