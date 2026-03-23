@@ -108,3 +108,23 @@ class TestConfigLoading:
 
             assert get("max_folder_files") == 5000
             assert get("use_ai_summaries") is False
+
+    def test_type_mismatch_logs_warning_and_uses_default(self, monkeypatch, caplog):
+        """Should log warning and use default on type mismatch."""
+        from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG
+        import logging
+
+        _GLOBAL_CONFIG.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.jsonc"
+            config_path.write_text('{ "max_folder_files": "2000" }')  # String instead of int
+
+            with caplog.at_level(logging.WARNING):
+                load_config(tmpdir)
+
+            # Should have logged a warning
+            assert "invalid type" in caplog.text.lower()
+
+            # Should use default
+            assert get("max_folder_files") == 2000
