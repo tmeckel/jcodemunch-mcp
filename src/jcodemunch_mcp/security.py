@@ -383,9 +383,6 @@ def get_max_folder_files(max_files: Optional[int] = None) -> int:
     value = _config.get("max_folder_files")
     if isinstance(value, int) and value > 0:
         return value
-    value = _config.get("max_index_files")
-    if isinstance(value, int) and value > 0:
-        return value
     return DEFAULT_MAX_FOLDER_FILES
 
 

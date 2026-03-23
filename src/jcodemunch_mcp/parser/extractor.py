@@ -21,15 +21,15 @@ def parse_file(content: str, filename: str, language: str) -> list[Symbol]:
     """
     if language not in LANGUAGE_REGISTRY:
         return []
-    
-    # Gate SQL-dependent features: when SQL is removed from languages config,
-    # skip parsing SQL files entirely. This prevents dbt context provider overhead
-    # and sql_preprocessor imports for users who don't need SQL support.
-    if language == "sql":
-        # Defer import to avoid circular dependency at module load time
+
+    # Skip parsing if the language is not in the configured languages list.
+    # When languages config is None (default), all languages are enabled.
+    try:
         from ..config import is_language_enabled as _is_lang_enabled
-        if not _is_lang_enabled("sql"):
+        if not _is_lang_enabled(language):
             return []
+    except ImportError:
+        pass  # config module not available (e.g. standalone use)
     
     source_bytes = content.encode("utf-8")
 

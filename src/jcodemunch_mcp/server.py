@@ -1103,7 +1103,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         
         if isinstance(result, dict):
             meta_fields = config_module.get("meta_fields")
-            if meta_fields == []:
+            if meta_fields == [] or arguments.get("suppress_meta"):
                 result.pop("_meta", None)
             elif meta_fields is None:
                 _meta = result.setdefault("_meta", {})
@@ -2036,7 +2036,6 @@ def main(argv: Optional[list[str]] = None):
     _setup_logging(args)
 
     if args.command == "watch":
-        config_module.load_config()
         from .watcher import watch_folders
 
         use_ai = not args.no_ai_summaries and _default_use_ai_summaries()
@@ -2056,7 +2055,6 @@ def main(argv: Optional[list[str]] = None):
 
         handle_hook_event(event_type=args.event_type)
     elif args.command == "watch-claude":
-        config_module.load_config()
         from .watcher import watch_claude_worktrees
 
         use_ai = not args.no_ai_summaries and _default_use_ai_summaries()
@@ -2072,7 +2070,6 @@ def main(argv: Optional[list[str]] = None):
             )
         )
     elif args.command == "index-file":
-        config_module.load_config()
         from .tools.index_file import index_file as _index_file
         import json as _json
 
@@ -2087,7 +2084,8 @@ def main(argv: Optional[list[str]] = None):
             sys.exit(1)
     else:
         # serve (default)
-        # Load config at startup so config values are available to all tools
+        # Re-run load_config() after _setup_logging() so config warnings/errors
+        # go to the configured log destination (the early call at startup ran before logging was set up)
         config_module.load_config()
         config_module.load_all_project_configs()
         from .reindex_state import set_freshness_mode

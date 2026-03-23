@@ -240,7 +240,7 @@ def load_config(storage_path: str | None = None) -> None:
             loaded = json.loads(stripped)
 
             # Start with defaults, then overlay valid config values
-            _GLOBAL_CONFIG = DEFAULTS.copy()
+            _GLOBAL_CONFIG = deepcopy(DEFAULTS)
             for key, value in loaded.items():
                 if key in CONFIG_TYPES:
                     if _validate_type(key, value, CONFIG_TYPES[key]):
@@ -270,10 +270,10 @@ def load_config(storage_path: str | None = None) -> None:
                     # Ignore unknown keys silently
         except json.JSONDecodeError as e:
             logger.error("Failed to parse config.jsonc: %s", e)
-            _GLOBAL_CONFIG = DEFAULTS.copy()
+            _GLOBAL_CONFIG = deepcopy(DEFAULTS)
         except Exception as e:
             logger.error("Failed to load config.jsonc: %s", e)
-            _GLOBAL_CONFIG = DEFAULTS.copy()
+            _GLOBAL_CONFIG = deepcopy(DEFAULTS)
     else:
         _GLOBAL_CONFIG = DEFAULTS.copy()
 
@@ -326,10 +326,10 @@ def _parse_env_value(value: str, expected_type: type | tuple) -> Any:
                         result[ext] = lang
                 return result
         else:
-            logger.warning(f"Unknown config type %s for env var value: %s", expected_type, value)
+            logger.warning("Unknown config type %s for env var value: %s", expected_type, value)
             return None
     except (ValueError, json.JSONDecodeError):
-        logger.warning(f"Failed to parse env var value: {value}")
+        logger.warning("Failed to parse env var value: %s", value)
         return None
 
 
@@ -378,8 +378,8 @@ def _resolve_repo_key(repo: str) -> str | None:
         return repo
     if repo in _REPO_PATH_CACHE:
         cached = _REPO_PATH_CACHE[repo]
-        if cached in _PROJECT_CONFIGS:
-            return cached
+        # None = negative cache (unknown repo), str = resolved path
+        return cached
     try:
         from .storage.index_store import IndexStore
         storage_path = os.environ.get("CODE_INDEX_PATH", str(Path.home() / ".code-index"))
@@ -400,6 +400,8 @@ def _resolve_repo_key(repo: str) -> str | None:
                 return resolved
     except Exception:
         pass
+    # Negative cache: avoids repeated IndexStore scans for unknown identifiers
+    _REPO_PATH_CACHE[repo] = None  # type: ignore[assignment]
     return None
 
 

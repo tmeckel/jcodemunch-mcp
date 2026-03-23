@@ -500,7 +500,8 @@ async def test_no_descriptions_config_keeps_original(monkeypatch):
         config_module._GLOBAL_CONFIG.update(orig_config)
 
 
-
+@pytest.mark.asyncio
+async def test_meta_fields_empty_list_removes_meta_envelope():
     """meta_fields=[] strips the _meta key from the response."""
     from jcodemunch_mcp import config as config_module
 
