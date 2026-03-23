@@ -179,6 +179,20 @@ With optional GitHub auth and AI summaries:
 * `GOOGLE_MODEL`
   Overrides the default Gemini model.
 
+* `JCODEMUNCH_PATH_MAP`
+  Remaps stored path prefixes so an index built on one machine can be reused on
+  another without re-indexing. Format: `orig1=new1,orig2=new2` where `orig` is
+  the prefix as stored in the index (the path used at index time) and `new` is
+  the equivalent path on the current machine. Each pair is split on the last `=`,
+  so `=` signs within path components are preserved. Pairs are comma-separated;
+  path components containing commas are not supported. The first matching prefix
+  wins — list more-specific prefixes before broader ones when they overlap.
+
+  Example (Linux index reused on Windows):
+  ```
+  JCODEMUNCH_PATH_MAP=/home/user/Dev=C:\Users\user\Dev
+  ```
+
 * `JCODEMUNCH_CONTEXT_PROVIDERS=0`
   Disables context-provider enrichment during indexing.
 
