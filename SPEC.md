@@ -222,7 +222,7 @@ Returns a hierarchical symbol tree for a file. Parent-child relationships such a
 
 * includes signatures and summaries
 * does not include full source
-* intended as a lightweight inspection tool before `get_symbol` or `get_symbols`
+* intended as a lightweight inspection tool before `get_symbol_source`
 
 ---
 
@@ -283,7 +283,9 @@ Returns guidance for exploring unfamiliar repositories, including useful keyword
 
 ### Retrieval
 
-#### `get_symbol` — Get full source of a symbol
+#### `get_symbol_source` — Get full source of one or more symbols
+
+Single symbol — returns flat symbol object:
 
 ```json
 {
@@ -294,18 +296,7 @@ Returns guidance for exploring unfamiliar repositories, including useful keyword
 }
 ```
 
-Retrieves the source for a single symbol using its stored byte offset and byte length.
-
-**Behavioral notes:**
-
-* retrieval is based on cached raw file content, not reparsing
-* `verify` re-hashes the retrieved source and compares it with the stored `content_hash`
-* `context_lines` optionally adds surrounding lines for limited context
-* returns verification state in `_meta` when verification is requested
-
----
-
-#### `get_symbols` — Batch retrieve multiple symbols
+Batch — returns `{symbols, errors}`:
 
 ```json
 {
@@ -314,12 +305,13 @@ Retrieves the source for a single symbol using its stored byte offset and byte l
 }
 ```
 
-Returns a list of resolved symbol payloads together with per-ID errors where applicable.
-
 **Behavioral notes:**
 
-* intended to reduce multi-call overhead when several related symbols are needed
-* missing symbols are reported without causing unrelated successful lookups to fail
+* retrieval is based on cached raw file content, not reparsing
+* `symbol_id` and `symbol_ids` are mutually exclusive — passing both is an error
+* `verify` re-hashes the retrieved source and compares it with the stored `content_hash`; applies to all symbols in batch mode
+* `context_lines` optionally adds surrounding lines; applies to all symbols in batch mode
+* in batch mode, missing symbols are reported in `errors[]` without causing other lookups to fail
 
 ---
 
@@ -859,7 +851,7 @@ Text search is file-content oriented and is intended for cases where the desired
 
 ### Byte-offset retrieval
 
-`get_symbol` and related retrieval tools access cached raw file content by stored byte offsets and lengths. This avoids reparsing or rescanning full files and preserves exact source fidelity.
+`get_symbol_source` and related retrieval tools access cached raw file content by stored byte offsets and lengths. This avoids reparsing or rescanning full files and preserves exact source fidelity.
 
 ### Verification
 
@@ -867,7 +859,7 @@ When `verify` is requested, the retrieved content is re-hashed and compared to t
 
 ### Batch retrieval
 
-`get_symbols` allows multiple known symbol IDs to be retrieved in one call. This reduces overhead for workflows that require several related definitions simultaneously.
+`get_symbol_source` accepts either `symbol_id` (string, returns flat object) or `symbol_ids` (array, returns `{symbols, errors}`). This reduces overhead for workflows that require several related definitions simultaneously.
 
 ### Contextual retrieval
 

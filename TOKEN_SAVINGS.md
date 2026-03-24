@@ -37,7 +37,7 @@ jCodeMunch indexes a repository once and allows agents to retrieve **exact symbo
 | Approach         | Tokens Consumed | Process                               |
 | ---------------- | --------------- | ------------------------------------- |
 | Raw file loading | ~7,500 tokens   | Open multiple files and scan manually |
-| jCodeMunch MCP   | ~1,449 tokens   | `search_symbols` → `get_symbol`       |
+| jCodeMunch MCP   | ~1,449 tokens   | `search_symbols` → `get_symbol_source` |
 
 **Savings:** ~80.7%
 

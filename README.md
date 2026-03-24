@@ -279,11 +279,11 @@ AI provider priority: Anthropic → Gemini → local LLM → signature fallback.
 
 A common question: does this only help during exploration, or also when the agent is prompted to read a file before editing?
 
-**It helps most when editing a specific function.** The "read before edit" constraint doesn't require reading the whole file — it requires reading the code. `get_symbol` gives you exactly the function body you're about to touch, nothing else. Instead of reading 700 lines to edit one method, you read those 30 lines.
+**It helps most when editing a specific function.** The "read before edit" constraint doesn't require reading the whole file — it requires reading the code. `get_symbol_source` gives you exactly the function body you're about to touch, nothing else. Instead of reading 700 lines to edit one method, you read those 30 lines.
 
 | Scenario | Native tool | jCodemunch | Savings |
 |----------|-------------|------------|---------|
-| Edit one function (700-line file) | `Read` → 700 lines | `get_symbol` → 30 lines | ~95% |
+| Edit one function (700-line file) | `Read` → 700 lines | `get_symbol_source` → 30 lines | ~95% |
 | Understand a file's structure | `Read` → full content | `get_file_outline` → names + signatures | ~80% |
 | Find which file to edit | `Grep` many files | `search_symbols` → exact match | comparable |
 | Edit requires whole-file context | `Read` → full content | `get_file_content` → full content | ~0% |

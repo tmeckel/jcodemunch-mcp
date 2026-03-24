@@ -354,7 +354,7 @@ The most direct retrieval path is:
 
 1. `search_symbols`
 2. select a `symbol_id`
-3. call `get_symbol` or `get_symbols`
+3. call `get_symbol_source`
 
 ### File-oriented discovery
 
@@ -370,7 +370,7 @@ When symbol names are unknown, file and repository outlines support navigation w
 
 ### Drift verification
 
-`get_symbol` supports verification so a client can determine whether retrieved content still matches the indexed version. This helps mitigate stale-index problems in fast-changing repositories.
+`get_symbol_source` supports verification so a client can determine whether retrieved content still matches the indexed version. This helps mitigate stale-index problems in fast-changing repositories.
 
 ---
 
@@ -476,8 +476,7 @@ The tool surface is best described by capability domain rather than by a fixed c
 ### Retrieval
 
 * `get_file_content`
-* `get_symbol`
-* `get_symbols`
+* `get_symbol_source`
 * `get_context_bundle`
 
 ### Search and reference checking

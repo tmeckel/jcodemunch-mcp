@@ -576,16 +576,34 @@ def generate_template() -> str:
 
     # All available tools (for disabled_tools reference)
     all_tools = [
-        "index_repo", "index_folder", "index_file", "list_repos", "resolve_repo",
-        "get_file_tree", "get_file_outline", "get_symbol", "get_file_content",
-        "get_symbols", "search_symbols", "search_text", "search_columns",
-        "get_repo_outline", "get_context_bundle", "get_session_stats",
-        "get_dependency_graph", "get_symbol_diff", "get_class_hierarchy",
-        "get_related_symbols", "get_blast_radius", "suggest_queries",
-        "find_importers", "find_references", "check_references",
-        "invalidate_cache", "wait_for_fresh",
+        "check_references",
+        "find_importers",
+        "find_references",
+        "get_blast_radius",
+        "get_class_hierarchy",
+        "get_context_bundle",
+        "get_dependency_graph",
+        "get_file_content",
+        "get_file_outline",
+        "get_file_tree",
+        "get_related_symbols",
+        "get_repo_outline",
+        "get_session_stats",
+        "get_symbol_diff",
+        "get_symbol_source",
+        "index_file",
+        "index_folder",
+        "index_repo",
+        "invalidate_cache",
+        "list_repos",
+        "resolve_repo",
+        "search_columns",
+        "search_symbols",
+        "search_text",
+        "suggest_queries",
+        "wait_for_fresh",
     ]
-    tools_str = "\n    //   ".join(f'"{t}",' for t in all_tools)
+    tools_str = "\n  // ".join(f'"{t}",' for t in all_tools)
 
     # All available meta_fields (for template documentation)
     meta_fields_list = [
@@ -636,8 +654,9 @@ def generate_template() -> str:
   // Project: tools listed here are rejected at call_tool() with an
   //   explanatory error (schema is global, can't be changed per-project).
   // Default: empty (all tools enabled). Uncomment to disable specific tools.
-  // Available tools: {tools_str}
-  "disabled_tools": [],
+  "disabled_tools": [
+  // {tools_str}
+  ],
 
   // === Descriptions ===
   // Append text to shortened tool/param descriptions.
@@ -659,7 +678,7 @@ def generate_template() -> str:
     // "get_context_bundle": {{ "_tool": "" }},
     // "suggest_queries": {{ "_tool": "" }},
     // "_shared": {{ "repo": "" }}
-  }}
+  }},
 
   // === Transport ===
   // "transport": "stdio",

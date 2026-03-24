@@ -353,7 +353,7 @@ When indexing local folders, jCodeMunch can detect ecosystem tools and enrich th
 
 ```json
 search_symbols: { "repo": "owner/repo", "query": "authenticate", "kind": "function" }
-get_symbol: { "repo": "owner/repo", "symbol_id": "src/auth.py::authenticate#function" }
+get_symbol_source: { "repo": "owner/repo", "symbol_id": "src/auth.py::authenticate#function" }
 ```
 
 This is one of the core jCodeMunch loops:
@@ -370,7 +370,7 @@ That is where a lot of the token savings come from.
 
 ```json
 get_file_outline: { "repo": "owner/repo", "file_path": "src/auth.py" }
-get_symbols: {
+get_symbol_source: {
   "repo": "owner/repo",
   "symbol_ids": [
     "src/auth.py::AuthHandler.login#method",
@@ -422,7 +422,7 @@ This is useful when the thing you need is line-oriented rather than symbol-orien
 ## Verify source has not drifted
 
 ```json
-get_symbol: {
+get_symbol_source: {
   "repo": "owner/repo",
   "symbol_id": "src/main.py::process#function",
   "verify": true
@@ -514,8 +514,7 @@ These IDs stay stable across re-indexing as long as path, qualified name, and ki
 
 | Tool | What it does | Key parameters |
 |------|--------------|----------------|
-| `get_symbol` | Retrieve one symbol's exact source by ID; optional drift verification | `repo`, `symbol_id`, `verify`, `context_lines` |
-| `get_symbols` | Retrieve multiple symbols in one call (prefer over repeated `get_symbol`) | `repo`, `symbol_ids` |
+| `get_symbol_source` | Retrieve symbol source: `symbol_id` (single, flat response) or `symbol_ids[]` (batch, `{symbols,errors}`); supports verify and context_lines | `repo`, `symbol_id`, `symbol_ids`, `verify`, `context_lines` |
 | `get_context_bundle` | Symbol + its imports + optional callers in one bundle; supports multi-symbol and Markdown output | `repo`, `symbol_id`, `symbol_ids`, `include_callers`, `output_format` |
 | `get_file_content` | Read cached file content, optionally sliced to a line range | `repo`, `file_path`, `start_line`, `end_line` |
 
@@ -561,7 +560,7 @@ Looking for text, strings, or comments?
   → search_text  (supports regex and context_lines)
 
 Need to read a function or class?
-  → get_file_outline → get_symbol  (or get_symbols for multiple at once)
+  → get_file_outline → get_symbol_source
 
 Need symbol + its imports in one shot?
   → get_context_bundle
@@ -764,7 +763,7 @@ Do not log to stderr during stdio MCP sessions. Use `--log-file` or `JCODEMUNCH_
 1. Start with `suggest_queries` on any unfamiliar repo, then `get_repo_outline`.
 2. Use `get_file_outline` before pulling source — see API surface before reading code.
 3. Use `search_symbols` before `get_file_content` whenever possible.
-4. Use `get_symbols` or `get_context_bundle` for related items instead of repeated `get_symbol` calls.
+4. Use `get_symbol_source` with `symbol_ids[]` or `get_context_bundle` for related items instead of repeated single-symbol calls.
 5. Use `search_text` for comments, strings, and non-symbol content.
 6. Use `verify: true` when freshness matters.
 7. Re-index when the codebase changes materially. Use `index_file` for single-file updates.

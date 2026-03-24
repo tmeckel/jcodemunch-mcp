@@ -82,7 +82,7 @@ You can also add the same block to a project-level `CLAUDE.md` in your repo root
 
 1. Open a project in Claude Code (or Claude Desktop).
 2. Ask: *"Index this project"* — Claude will call `index_folder` on the current directory.
-3. Ask: *"Find the authenticate function"* — Claude calls `search_symbols`, then `get_symbol`. No file reads.
+3. Ask: *"Find the authenticate function"* — Claude calls `search_symbols`, then `get_symbol_source`. No file reads.
 
 **Verify it's working:** ask *"Is this project indexed?"* — Claude should call `resolve_repo` with the current directory. To see all indexed repos, ask *"What repos do you have indexed?"* — Claude will call `list_repos`.
 
@@ -96,7 +96,7 @@ You can also add the same block to a project-level `CLAUDE.md` in your repo root
 | Index a GitHub repo | `index_repo { "url": "owner/repo" }` |
 | Re-index one file after editing | `index_file { "path": "/your/project/src/foo.py" }` |
 | Find a function by name | `search_symbols { "repo": "...", "query": "funcName" }` |
-| Read a specific function | `get_symbol { "repo": "...", "symbol_id": "..." }` |
+| Read a specific function | `get_symbol_source { "repo": "...", "symbol_id": "..." }` |
 | See all files + structure | `get_repo_outline { "repo": "..." }` |
 | See a file's symbols | `get_file_outline { "repo": "...", "file_path": "..." }` |
 | Full-text search | `search_text { "repo": "...", "query": "TODO" }` |

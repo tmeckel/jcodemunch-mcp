@@ -196,7 +196,7 @@ if you only want it for certain projects.
 2. Ask: "Index this project"
    — Claude calls `index_folder` on the current directory
 3. Ask: "Find the authenticate function"
-   — Claude calls `search_symbols`, then `get_symbol` — no file reads
+   — Claude calls `search_symbols`, then `get_symbol_source` — no file reads
 4. Ask: "What repos do you have indexed?"
    — Claude calls `list_repos`
 
@@ -370,7 +370,7 @@ Here is the complete list of files and their updated `tools:` lines:
 
 Open each file, find the `tools:` line, and append `, mcp__jcodemunch__*` at
 the end. The wildcard `*` covers all jCodeMunch tools
-(`get_file_outline`, `search_symbols`, `get_symbol`, etc.) so you don't need
+(`get_file_outline`, `search_symbols`, `get_symbol_source`, etc.) so you don't need
 to list them individually.
 
 ### Also: project-level CLAUDE.md

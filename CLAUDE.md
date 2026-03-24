@@ -28,7 +28,7 @@ src/jcodemunch_mcp/
     get_file_tree.py
     get_file_outline.py
     get_file_content.py
-    get_symbol.py / get_symbols.py
+    get_symbol.py                # get_symbol_source — symbol_id→flat object or symbol_ids[]→{symbols,errors}
     search_symbols.py
     search_text.py
     search_columns.py            # Search column metadata across dbt/SQLMesh models

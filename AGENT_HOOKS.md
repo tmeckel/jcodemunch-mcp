@@ -50,7 +50,7 @@ Always use jCodemunch-MCP tools for code navigation. Never fall back to Read, Gr
 
 **Reading code:**
 - before opening any file → `get_file_outline` first
-- one symbol → `get_symbol`; multiple → `get_symbols` (fewer round-trips)
+- one or more symbols → `get_symbol_source` (single ID → flat object; array → batch)
 - symbol + its imports → `get_context_bundle`
 - specific line range only → `get_file_content` (last resort)
 
@@ -91,8 +91,7 @@ Finding code:
 
 Reading code:
   before opening a file → get_file_outline first
-  one symbol            → get_symbol
-  multiple symbols      → get_symbols (prefer over repeated get_symbol)
+  one or more symbols   → get_symbol_source (symbol_id for one, symbol_ids[] for batch)
   symbol + imports      → get_context_bundle
   line range only       → get_file_content (last resort)
 
@@ -136,7 +135,7 @@ sequenceDiagram
     Note over CC: Agent wants to read source
     CC->>ReadG: Bash / Grep / Glob
     alt Is Code Exploration
-        ReadG-->>CC: Block (Exit 2) + Enforce search/get_symbols
+        ReadG-->>CC: Block (Exit 2) + Enforce search/get_symbol_source
     else Safe Command (e.g. npm test)
         ReadG-->>CC: Pass (Exit 0)
     end
@@ -230,8 +229,7 @@ cat >&2 <<'EOF'
 
   Retrieval
   search_symbols   → find a function/class/method by name
-  get_symbol       → fetch a specific symbol's implementation
-  get_symbols      → fetch multiple symbols in one call
+  get_symbol_source → fetch one symbol (symbol_id) or many (symbol_ids[])
   get_context_bundle → symbol + its imports (+ optional callers) in one call
   get_file_content → read a specific line range (last resort)
 
@@ -334,7 +332,7 @@ $FILE_HINT
 
 Before writing to source files, jCodeMunch read tools give you safer context:
 
-  get_symbol / get_symbols     → confirm you are editing the right implementation
+  get_symbol_source            → confirm you are editing the right implementation
   get_file_outline             → see all symbols in the file before touching it
   get_blast_radius             → understand what else breaks if you change this
   find_references              → find all call sites that may need updating too
