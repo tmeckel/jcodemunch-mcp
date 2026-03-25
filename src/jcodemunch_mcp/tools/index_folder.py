@@ -377,7 +377,8 @@ def index_folder(
     # warn whenever the caller supplied a relative path so the resolved value is
     # always visible in the tool response.
     _MIN_PATH_PARTS = 3
-    if len(folder_path.parts) < _MIN_PATH_PARTS:
+    _disable_path_check = bool(_config.get("disable_path_check", False))
+    if len(folder_path.parts) < _MIN_PATH_PARTS and not _disable_path_check:
         return {
             "success": False,
             "error": (
@@ -390,6 +391,12 @@ def index_folder(
         }
 
     warnings = []
+
+    if len(folder_path.parts) < _MIN_PATH_PARTS and _disable_path_check:
+        warnings.append(
+            f"Resolved path '{folder_path}' would normally be rejected as too broad, "
+            "but disable_path_check=true bypassed that safeguard."
+        )
 
     # Warn when a relative path was given so callers can see what it resolved to.
     if not Path(path).expanduser().is_absolute():
