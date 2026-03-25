@@ -1,6 +1,7 @@
 """Tests for tools module."""
 
 import json
+from pathlib import Path
 import pytest
 from unittest.mock import patch
 
@@ -44,9 +45,9 @@ def test_discover_source_files():
         {"path": "src/engine.cpp", "type": "blob", "size": 700},
         {"path": "include/engine.hpp", "type": "blob", "size": 350},
     ]
-    
+
     files, _, truncated = discover_source_files(tree_entries, gitignore_content=None)
-    
+
     assert "src/main.py" in files
     assert "src/utils.py" in files
     assert "src/engine.cpp" in files
@@ -62,7 +63,7 @@ def test_discover_source_files_respects_max():
         {"path": f"file{i}.py", "type": "blob", "size": 100}
         for i in range(1000)
     ]
-    
+
     files, _, truncated = discover_source_files(tree_entries, max_files=100)
     assert len(files) == 100
     assert truncated is True
@@ -77,7 +78,7 @@ def test_discover_source_files_prioritizes_src():
         {"path": f"src/file{i}.py", "type": "blob", "size": 100}
         for i in range(300)
     ]
-    
+
     files, _, truncated = discover_source_files(tree_entries, max_files=100)
     # Most files should be from src/
     src_count = sum(1 for f in files if f.startswith("src/"))
@@ -207,6 +208,126 @@ class TestVersionMismatchWarning:
         assert result["success"] is True
         warnings = result.get("warnings", [])
         assert any("newer version" in w for w in warnings)
+
+
+class TestBroadRootPathGuard:
+    def test_index_folder_rejects_broad_root_by_default(self, tmp_path):
+        """Broad roots should still be rejected when disable_path_check is false."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+        import os
+
+        broad_root = tmp_path / "broad"
+        broad_root.mkdir()
+        orig_cwd = Path.cwd()
+
+        try:
+            os.chdir(broad_root)
+            with patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None: (
+                    False if key == "disable_path_check" else default
+                ),
+            ):
+                result = index_folder_module.index_folder(
+                    ".",
+                    use_ai_summaries=False,
+                    storage_path=str(tmp_path / "store"),
+                )
+        finally:
+            os.chdir(orig_cwd)
+
+        assert result["success"] is False
+        assert result["error"] == "No source files found"
+
+    def test_index_folder_allows_broad_root_when_path_check_disabled(self, tmp_path):
+        """disable_path_check should bypass the broad-root safeguard only."""
+        from jcodemunch_mcp.tools.index_folder import index_folder
+        from jcodemunch_mcp import config as config_module
+        import os
+
+        broad_root = tmp_path / "broad"
+        broad_root.mkdir()
+        (broad_root / "main.py").write_text("def hello():\n    return 1\n")
+
+        orig_global = config_module._GLOBAL_CONFIG.copy()
+        orig_projects = config_module._PROJECT_CONFIGS.copy()
+        orig_hashes = config_module._PROJECT_CONFIG_HASHES.copy()
+        orig_cwd = Path.cwd()
+
+        config_module._GLOBAL_CONFIG.clear()
+        config_module._GLOBAL_CONFIG.update(config_module.DEFAULTS)
+        config_module._GLOBAL_CONFIG["disable_path_check"] = True
+        config_module._PROJECT_CONFIGS.clear()
+        config_module._PROJECT_CONFIG_HASHES.clear()
+
+        try:
+            os.chdir(broad_root)
+            result = index_folder(
+                ".",
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+        finally:
+            os.chdir(orig_cwd)
+            config_module._GLOBAL_CONFIG.clear()
+            config_module._GLOBAL_CONFIG.update(orig_global)
+            config_module._PROJECT_CONFIGS.clear()
+            config_module._PROJECT_CONFIGS.update(orig_projects)
+            config_module._PROJECT_CONFIG_HASHES.clear()
+            config_module._PROJECT_CONFIG_HASHES.update(orig_hashes)
+
+        assert result["success"] is True, result
+        assert result["folder_path"] == str(broad_root.resolve())
+        warnings = result.get("warnings", [])
+        assert not any("too broad to index safely" in warning for warning in warnings)
+
+    def test_index_folder_still_warns_on_relative_path_when_check_disabled(
+        self, tmp_path
+    ):
+        """Relative-path visibility warning should remain even if broad-root guard is disabled."""
+        from jcodemunch_mcp.tools.index_folder import index_folder
+        from jcodemunch_mcp import config as config_module
+        import os
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        (project_dir / "main.py").write_text("def hello():\n    return 1\n")
+
+        orig_global = config_module._GLOBAL_CONFIG.copy()
+        orig_projects = config_module._PROJECT_CONFIGS.copy()
+        orig_hashes = config_module._PROJECT_CONFIG_HASHES.copy()
+        orig_cwd = Path.cwd()
+
+        config_module._GLOBAL_CONFIG.clear()
+        config_module._GLOBAL_CONFIG.update(config_module.DEFAULTS)
+        config_module._GLOBAL_CONFIG["disable_path_check"] = True
+        config_module._PROJECT_CONFIGS.clear()
+        config_module._PROJECT_CONFIG_HASHES.clear()
+
+        try:
+            os.chdir(project_dir)
+            result = index_folder(
+                ".",
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+        finally:
+            os.chdir(orig_cwd)
+            config_module._GLOBAL_CONFIG.clear()
+            config_module._GLOBAL_CONFIG.update(orig_global)
+            config_module._PROJECT_CONFIGS.clear()
+            config_module._PROJECT_CONFIGS.update(orig_projects)
+            config_module._PROJECT_CONFIG_HASHES.clear()
+            config_module._PROJECT_CONFIG_HASHES.update(orig_hashes)
+
+        assert result["success"] is True
+        warnings = result.get("warnings", [])
+        assert any(
+            f"Relative path '.' resolved to '{project_dir.resolve()}'" in warning
+            for warning in warnings
+        )
 
 
 class TestNestedGitignore:

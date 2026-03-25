@@ -605,8 +605,150 @@ class TestEnvVarFallback:
             # Config value should be used, not env var
             assert get("max_folder_files") == 3000
 
+    def test_disable_path_check_env_var_used_when_config_key_absent(
+        self, monkeypatch, caplog
+    ):
+        """Should use disable_path_check env var fallback when config key is absent."""
+        from src.jcodemunch_mcp.config import (
+            load_config,
+            get,
+            _GLOBAL_CONFIG,
+            _DEPRECATED_ENV_VARS_LOGGED,
+        )
+        import logging
+
+        _GLOBAL_CONFIG.clear()
+        _DEPRECATED_ENV_VARS_LOGGED.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.jsonc"
+            config_path.write_text('{"use_ai_summaries": false}')
+
+            monkeypatch.setenv("JCODEMUNCH_DISABLE_PATHCHECK", "true")
+
+            with caplog.at_level(logging.WARNING):
+                load_config(tmpdir)
+
+            assert get("disable_path_check") is True
+
+    @pytest.mark.parametrize("env_value", ["true", "1", "yes", "on"])
+    def test_disable_path_check_env_var_truthy_values(
+        self, monkeypatch, caplog, env_value
+    ):
+        """disable_path_check env fallback should accept standard truthy values."""
+        from src.jcodemunch_mcp.config import (
+            load_config,
+            get,
+            _GLOBAL_CONFIG,
+            _DEPRECATED_ENV_VARS_LOGGED,
+        )
+        import logging
+
+        _GLOBAL_CONFIG.clear()
+        _DEPRECATED_ENV_VARS_LOGGED.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.jsonc"
+            config_path.write_text('{"use_ai_summaries": false}')
+
+            monkeypatch.setenv("JCODEMUNCH_DISABLE_PATHCHECK", env_value)
+
+            with caplog.at_level(logging.WARNING):
+                load_config(tmpdir)
+
+            assert get("disable_path_check") is True
+
+    @pytest.mark.parametrize("env_value", ["false", "0", "no", "off", "anything-else"])
+    def test_disable_path_check_env_var_non_truthy_values_are_false(
+        self, monkeypatch, caplog, env_value
+    ):
+        """disable_path_check env fallback should treat non-truthy values as false."""
+        from src.jcodemunch_mcp.config import (
+            load_config,
+            get,
+            _GLOBAL_CONFIG,
+            _DEPRECATED_ENV_VARS_LOGGED,
+        )
+        import logging
+
+        _GLOBAL_CONFIG.clear()
+        _DEPRECATED_ENV_VARS_LOGGED.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.jsonc"
+            config_path.write_text('{"use_ai_summaries": false}')
+
+            monkeypatch.setenv("JCODEMUNCH_DISABLE_PATHCHECK", env_value)
+
+            with caplog.at_level(logging.WARNING):
+                load_config(tmpdir)
+
+            assert get("disable_path_check") is False
+
+    def test_disable_path_check_config_wins_over_env_var(self, monkeypatch, caplog):
+        """Explicit config should take precedence over disable_path_check env fallback."""
+        from src.jcodemunch_mcp.config import (
+            load_config,
+            get,
+            _GLOBAL_CONFIG,
+            _DEPRECATED_ENV_VARS_LOGGED,
+        )
+        import logging
+
+        _GLOBAL_CONFIG.clear()
+        _DEPRECATED_ENV_VARS_LOGGED.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.jsonc"
+            config_path.write_text('{"disable_path_check": false}')
+
+            monkeypatch.setenv("JCODEMUNCH_DISABLE_PATHCHECK", "true")
+
+            with caplog.at_level(logging.WARNING):
+                load_config(tmpdir)
+
+            assert get("disable_path_check") is False
+            assert not any(
+                "JCODEMUNCH_DISABLE_PATHCHECK" in rec.message for rec in caplog.records
+            )
+
+
+class TestProjectConfigDisablePathCheck:
+    """Test project-level override for disable_path_check."""
+
+    def test_project_config_can_override_global_disable_path_check(self):
+        """Project config should override global disable_path_check."""
+        from src.jcodemunch_mcp.config import (
+            load_config,
+            load_project_config,
+            get,
+            _GLOBAL_CONFIG,
+            _PROJECT_CONFIGS,
+        )
+
+        _GLOBAL_CONFIG.clear()
+        _PROJECT_CONFIGS.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            global_config = Path(tmpdir) / "global" / "config.jsonc"
+            global_config.parent.mkdir()
+            global_config.write_text('{"disable_path_check": false}')
+
+            load_config(str(global_config.parent))
+
+            project_root = Path(tmpdir) / "project"
+            project_root.mkdir()
+            project_config = project_root / ".jcodemunch.jsonc"
+            project_config.write_text('{"disable_path_check": true}')
+
+            load_project_config(str(project_root))
+
+            repo_key = str(project_root.resolve())
+            assert get("disable_path_check", repo=repo_key) is True
+
 
 # ── Config file validation ────────────────────────────────────────────────────
+
 
 class TestConfigValidation:
     """Test validate_config() function in config module."""
@@ -1020,13 +1162,13 @@ class TestJSONCEdgeCases:
         result = _strip_jsonc(text)
         parsed = json.loads(result)
         assert "\t" in parsed["text"]
-        
+
         # Test quote character (escaped in JSON as \")
         text = '{"text": "say \\"hello\\""}'
         result = _strip_jsonc(text)
         parsed = json.loads(result)
         assert '"' in parsed["text"]
-        
+
         # Test backslash character (escaped in JSON as \\)
         text = '{"path": "C:\\\\Users\\\\test"}'
         result = _strip_jsonc(text)
@@ -1372,7 +1514,7 @@ class TestAllConfigKeys:
         from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG, CONFIG_TYPES
 
         # Find all keys with tuple types that include None
-        nullable_keys = [k for k, v in CONFIG_TYPES.items() 
+        nullable_keys = [k for k, v in CONFIG_TYPES.items()
                         if isinstance(v, tuple) and type(None) in v]
 
         for key in nullable_keys:
