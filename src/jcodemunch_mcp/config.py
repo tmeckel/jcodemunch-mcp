@@ -20,6 +20,7 @@ _REPO_PATH_CACHE: dict[str, str] = {}
 
 ENV_VAR_MAPPING = {
     "JCODEMUNCH_USE_AI_SUMMARIES": "use_ai_summaries",
+    "JCODEMUNCH_TRUSTED_FOLDERS": "trusted_folders",
     "JCODEMUNCH_MAX_FOLDER_FILES": "max_folder_files",
     "JCODEMUNCH_MAX_INDEX_FILES": "max_index_files",
     "JCODEMUNCH_STALENESS_DAYS": "staleness_days",
@@ -47,6 +48,7 @@ ENV_VAR_MAPPING = {
 
 DEFAULTS = {
     "use_ai_summaries": True,
+    "trusted_folders": [],
     "max_folder_files": 2000,
     "max_index_files": 10000,
     "staleness_days": 7,
@@ -79,6 +81,7 @@ DEFAULTS = {
 
 CONFIG_TYPES = {
     "use_ai_summaries": bool,
+    "trusted_folders": list,
     "max_folder_files": int,
     "max_index_files": int,
     "staleness_days": int,
@@ -112,7 +115,7 @@ CONFIG_TYPES = {
 
 def _strip_jsonc(text: str) -> str:
     """Strip // and /* */ comments from JSONC, respecting quoted strings.
-    
+
     Also strips trailing commas (common in JSONC but invalid in JSON).
     """
     result, i, n = [], 0, len(text)
@@ -164,7 +167,7 @@ def _strip_jsonc(text: str) -> str:
         else:
             result.append(ch)
             i += 1
-    
+
     output = ''.join(result)
     final = []
     j = 0
@@ -206,12 +209,14 @@ def _strip_jsonc(text: str) -> str:
         else:
             final.append(ch)
             j += 1
-    
+
     return ''.join(final)
 
 
 def _validate_type(key: str, value: Any, expected_type: type | tuple) -> bool:
     """Validate value against expected type."""
+    if key == "trusted_folders":
+        return isinstance(value, list) and all(isinstance(item, str) for item in value)
     if isinstance(expected_type, tuple):
         return isinstance(value, expected_type)
     return isinstance(value, expected_type)
@@ -252,6 +257,7 @@ def load_config(storage_path: str | None = None) -> None:
                         # Special validation for languages list
                         if key == "languages" and isinstance(value, list):
                             from .parser.languages import LANGUAGE_REGISTRY
+
                             valid_langs = []
                             for lang in value:
                                 if lang in LANGUAGE_REGISTRY:
@@ -260,9 +266,22 @@ def load_config(storage_path: str | None = None) -> None:
                                     logger.warning(
                                         "Config key 'languages' contains unknown language '%s'. "
                                         "Known languages: %s...",
-                                        lang, list(LANGUAGE_REGISTRY.keys())[:5]
+                                        lang,
+                                        list(LANGUAGE_REGISTRY.keys())[:5],
                                     )
                             _GLOBAL_CONFIG[key] = valid_langs
+                        elif key == "trusted_folders" and isinstance(value, list):
+                            valid_folders = []
+                            for folder in value:
+                                expanded_folder = Path(folder).expanduser()
+                                if expanded_folder.is_absolute():
+                                    valid_folders.append(expanded_folder.resolve())
+                                else:
+                                    raise ValueError(
+                                        "Config key 'trusted_folders' contains non-absolute path "
+                                        f"'{folder}'"
+                                    )
+                            _GLOBAL_CONFIG[key] = valid_folders
                         else:
                             _GLOBAL_CONFIG[key] = value
                         _explicit_keys.add(key)  # Track explicitly set keys
@@ -371,12 +390,12 @@ def _apply_env_var_fallback(explicit_keys: set[str] | None = None) -> None:
 
 def _resolve_repo_key(repo: str) -> str | None:
     """Resolve a repo identifier to the absolute path key used in _PROJECT_CONFIGS.
-    
+
     _PROJECT_CONFIGS is keyed by resolved absolute paths (e.g. "D:\\...\\project").
     The 'repo' argument from tool calls may be:
     - An absolute path (already a valid key)
     - A repo identifier like "jcodemunch-mcp" or "local/jcodemunch-mcp-384d867b"
-    
+
     Returns the resolved key if found, None otherwise.
     """
     if repo in _PROJECT_CONFIGS:
@@ -426,7 +445,7 @@ def _content_hash(content: str) -> str:
 
 def load_project_config(source_root: str) -> None:
     """Load and cache .jcodemunch.jsonc for a project.
-    
+
     Uses hash-based caching: if the config file content hasn't changed,
     the cached config is reused. This handles:
     - First-time indexing (no cache)
@@ -434,7 +453,7 @@ def load_project_config(source_root: str) -> None:
     - Config file edited (hash changed, reload)
     - File touched but unchanged (hash same, no reload)
     - Index dropped and recreated (cache still valid if file unchanged)
-    
+
     Thread-safe: uses _CONFIG_LOCK to protect global dict mutations.
     """
     project_config_path = Path(source_root) / ".jcodemunch.jsonc"
@@ -444,12 +463,12 @@ def load_project_config(source_root: str) -> None:
         try:
             content = project_config_path.read_text(encoding="utf-8-sig")
             content_hash = _content_hash(content)
-            
+
             with _CONFIG_LOCK:
                 if repo_key in _PROJECT_CONFIGS:
                     if _PROJECT_CONFIG_HASHES.get(repo_key) == content_hash:
                         return
-            
+
             stripped = _strip_jsonc(content)
             project_config = json.loads(stripped)
 
@@ -458,11 +477,29 @@ def load_project_config(source_root: str) -> None:
                 for key, value in project_config.items():
                     if key in CONFIG_TYPES:
                         if _validate_type(key, value, CONFIG_TYPES[key]):
-                            merged[key] = value
+                            if key == "trusted_folders" and isinstance(value, list):
+                                valid_folders = []
+                                for folder in value:
+                                    if folder.startswith("./"):
+                                        expanded_folder = (
+                                            Path(source_root) / folder[2:]
+                                        ).expanduser()
+                                    else:
+                                        expanded_folder = Path(folder).expanduser()
+                                    if expanded_folder.is_absolute():
+                                        valid_folders.append(expanded_folder.resolve())
+                                    else:
+                                        raise ValueError(
+                                            "Project config key 'trusted_folders' contains non-absolute path "
+                                            f"'{folder}'"
+                                        )
+                                merged[key] = valid_folders
+                            else:
+                                merged[key] = value
                         else:
                             logger.warning(
                                 "Project config key '%s' has invalid type. Using global default.",
-                                key
+                                key,
                             )
                 _PROJECT_CONFIGS[repo_key] = merged
                 _PROJECT_CONFIG_HASHES[repo_key] = content_hash
@@ -479,7 +516,7 @@ def load_project_config(source_root: str) -> None:
 
 def _list_repos_for_config() -> list[dict]:
     """Get list of indexed repos for project config loading.
-    
+
     Deferred import to avoid circular dependency at module load time.
     """
     from .storage.index_store import IndexStore
@@ -490,14 +527,14 @@ def _list_repos_for_config() -> list[dict]:
 
 def load_all_project_configs() -> None:
     """Load project configs for all already-indexed local repos.
-    
+
     Called once at server startup after load_config(). Discovers all indexed
     local repos via list_repos() and loads their .jcodemunch.jsonc files.
     Remote repos (empty source_root) are skipped.
     """
     if not _GLOBAL_CONFIG:
         return
-    
+
     try:
         repos = _list_repos_for_config()
         for repo_entry in repos:
@@ -563,6 +600,12 @@ def validate_config(config_path: str) -> list[str]:
                     f"Config key '{key}' has invalid type: "
                     f"expected {type_name}, got {type(value).__name__}"
                 )
+            elif key == "trusted_folders":
+                for entry in value:
+                    if not Path(entry).expanduser().is_absolute():
+                        issues.append(
+                            f"trusted_folders entry '{entry}' must be an absolute path"
+                        )
         else:
             issues.append(f"Config key '{key}' is not recognized (unknown key)")
 
@@ -625,6 +668,7 @@ def generate_template() -> str:
 {{
   // === Indexing ===
   // "use_ai_summaries": true,
+  // "trusted_folders": [],
   // "max_folder_files": 2000,
   // "max_index_files": 10000,
   // "staleness_days": 7,

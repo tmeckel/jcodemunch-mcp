@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 import re
@@ -40,6 +41,7 @@ from ..path_map import parse_path_map, remap
 SKIP_DIRS_REGEX = re.compile("^(" + "|".join(SKIP_DIRECTORIES) + ")$")
 SKIP_FILES_REGEX = re.compile("(" + "|".join(re.escape(p) for p in SKIP_FILES) + ")$")
 
+
 def get_filtered_files(path: str) -> Generator[str, None, None]:
     """Generator function to filter directories and files"""
     # Use os.walk with followlinks=False to avoid infinite loops caused by
@@ -51,6 +53,7 @@ def get_filtered_files(path: str) -> Generator[str, None, None]:
         for file in filenames:
             if not SKIP_FILES_REGEX.search(file):
                 yield dpath / file
+
 
 def _load_gitignore(folder_path: Path) -> Optional[pathspec.PathSpec]:
     """Load .gitignore from the folder root if it exists."""
@@ -84,6 +87,22 @@ def _load_all_gitignores(root: Path) -> dict[Path, pathspec.PathSpec]:
             except Exception:
                 pass
     return specs
+
+
+@lru_cache(maxsize=512)
+def _is_trusted(folder_path: Path, trusted_folders: tuple) -> bool:
+    """Return True when folder_path is trusted.
+
+    Empty trusted_folders means all folders are untrusted.
+    """
+    if not trusted_folders:
+        return False
+
+    return any(
+        folder_path == Path(trusted_folder)
+        or Path(trusted_folder) in folder_path.parents
+        for trusted_folder in trusted_folders
+    )
 
 
 def _is_gitignored(file_path: Path, gitignore_specs: dict[Path, pathspec.PathSpec]) -> bool:
@@ -387,6 +406,15 @@ def index_folder(
     # This handles both first-time indexing and re-indexing of existing projects.
     _config.load_project_config(str(folder_path))
 
+    warnings = []
+    trusted_folders = _config.get("trusted_folders", [], repo=str(folder_path))
+    is_trusted = _is_trusted(folder_path, tuple(trusted_folders))
+    if trusted_folders and not is_trusted:
+        return {
+            "success": False,
+            "error": f"Resolved path '{folder_path}' is not under trusted_folders.",
+        }
+
     # Guard against dangerously broad roots.  A relative path like "." resolves
     # against the MCP server's CWD (not the caller's project directory), which
     # can be "/" or "~" when the server is launched by a system launcher.
@@ -395,18 +423,22 @@ def index_folder(
     # always visible in the tool response.
     _MIN_PATH_PARTS = 3
     if len(folder_path.parts) < _MIN_PATH_PARTS:
-        return {
-            "success": False,
-            "error": (
-                f"Resolved path '{folder_path}' is too broad to index safely "
-                f"(fewer than {_MIN_PATH_PARTS} path components). "
-                "Pass an absolute path to the specific project directory instead of a "
-                "relative path like '.' — relative paths resolve against the MCP "
-                "server's working directory, which may not be your project root."
-            ),
-        }
+        if not is_trusted:
+            return {
+                "success": False,
+                "error": (
+                    f"Resolved path '{folder_path}' is too broad to index safely "
+                    f"(fewer than {_MIN_PATH_PARTS} path components). "
+                    "Pass an absolute path to the specific project directory instead of a "
+                    "relative path like '.' — relative paths resolve against the MCP "
+                    "server's working directory, which may not be your project root."
+                ),
+            }
 
-    warnings = []
+        warnings.append(
+            f"Resolved path '{folder_path}' would normally be rejected as too broad, "
+            "but it matched trusted_folders and was allowed."
+        )
 
     # Warn when a relative path was given so callers can see what it resolved to.
     if not Path(path).expanduser().is_absolute():
@@ -710,7 +742,10 @@ def index_folder(
         logger.info("Discovery skip counts: %s", skip_counts)
 
         if not source_files:
-            return {"success": False, "error": "No source files found"}
+            result = {"success": False, "error": "No source files found"}
+            if warnings:
+                result["warnings"] = warnings
+            return result
 
         # Discover context providers (dbt, terraform, etc.)
         _providers_enabled = context_providers and _config.get("context_providers", True)
