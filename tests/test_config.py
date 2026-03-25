@@ -605,8 +605,162 @@ class TestEnvVarFallback:
             # Config value should be used, not env var
             assert get("max_folder_files") == 3000
 
+    def test_trusted_folders_env_var_used_when_config_key_absent(
+        self, monkeypatch, caplog
+    ):
+        """Should use trusted_folders env var fallback when config key not set."""
+        from src.jcodemunch_mcp.config import (
+            load_config,
+            get,
+            _GLOBAL_CONFIG,
+            _DEPRECATED_ENV_VARS_LOGGED,
+        )
+        import logging
+
+        _GLOBAL_CONFIG.clear()
+        _DEPRECATED_ENV_VARS_LOGGED.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.jsonc"
+            config_path.write_text('{"use_ai_summaries": false}')
+
+            monkeypatch.setenv("JCODEMUNCH_TRUSTED_FOLDERS", "/work,/mounted/src")
+
+            with caplog.at_level(logging.WARNING):
+                load_config(tmpdir)
+
+            assert get("trusted_folders") == ["/work", "/mounted/src"]
+
+    def test_trusted_folders_config_wins_over_env_var(self, monkeypatch, caplog):
+        """Explicit trusted_folders config should take precedence over env fallback."""
+        from src.jcodemunch_mcp.config import (
+            load_config,
+            get,
+            _GLOBAL_CONFIG,
+            _DEPRECATED_ENV_VARS_LOGGED,
+        )
+        import logging
+
+        _GLOBAL_CONFIG.clear()
+        _DEPRECATED_ENV_VARS_LOGGED.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.jsonc"
+            config_path.write_text('{"trusted_folders": ["/config/work"]}')
+
+            monkeypatch.setenv("JCODEMUNCH_TRUSTED_FOLDERS", "/env/work")
+
+            with caplog.at_level(logging.WARNING):
+                load_config(tmpdir)
+
+            assert get("trusted_folders") == [Path("/config/work").resolve()]
+            assert not any(
+                "JCODEMUNCH_TRUSTED_FOLDERS" in rec.message for rec in caplog.records
+            )
+
+
+class TestTrustedFoldersConfig:
+    def test_validate_trusted_folders_rejects_relative_entries(self, tmp_path):
+        """validate_config should flag relative trusted_folders entries."""
+        from src.jcodemunch_mcp.config import validate_config
+
+        config_path = tmp_path / "config.jsonc"
+        config_path.write_text('{"trusted_folders": ["work"]}')
+
+        issues = validate_config(str(config_path))
+        assert any(
+            "trusted_folders entry 'work' must be an absolute path" in issue
+            for issue in issues
+        )
+
+    def test_validate_trusted_folders_rejects_non_string_entries(self, tmp_path):
+        """validate_config should reject trusted_folders entries that are not strings."""
+        from src.jcodemunch_mcp.config import validate_config
+
+        config_path = tmp_path / "config.jsonc"
+        config_path.write_text('{"trusted_folders": [123]}')
+
+        issues = validate_config(str(config_path))
+        assert any(
+            "Config key 'trusted_folders' has invalid type" in issue for issue in issues
+        )
+
+    def test_load_config_normalizes_trusted_folders(self, tmp_path):
+        """load_config should normalize trusted_folders immediately."""
+        from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG
+
+        _GLOBAL_CONFIG.clear()
+
+        trusted = tmp_path / "trusted"
+        config_path = tmp_path / "config.jsonc"
+        config_path.write_text(
+            json.dumps({"trusted_folders": [str(trusted / ".." / "trusted")]})
+        )
+
+        load_config(str(tmp_path))
+
+        assert get("trusted_folders") == [trusted.expanduser()]
+
+    def test_load_config_keeps_valid_trusted_folders(self, tmp_path):
+        """Valid rooted trusted_folders should remain available after load."""
+        from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG
+
+        _GLOBAL_CONFIG.clear()
+
+        config_path = tmp_path / "config.jsonc"
+        config_path.write_text('{"trusted_folders": ["/work"]}')
+
+        load_config(str(tmp_path))
+
+        assert get("trusted_folders") == [Path("/work").expanduser()]
+
+    def test_project_config_trusted_folders_expand_from_dot_slash(self, tmp_path):
+        """Project config './' trusted_folders entries should expand from project root."""
+        from src.jcodemunch_mcp.config import (
+            load_config,
+            load_project_config,
+            get,
+            _GLOBAL_CONFIG,
+            _PROJECT_CONFIGS,
+            _PROJECT_CONFIG_HASHES,
+        )
+
+        _GLOBAL_CONFIG.clear()
+        _PROJECT_CONFIGS.clear()
+        _PROJECT_CONFIG_HASHES.clear()
+
+        global_config = tmp_path / "config.jsonc"
+        global_config.write_text("{}")
+        load_config(str(tmp_path))
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        project_config = project_root / ".jcodemunch.jsonc"
+        project_config.write_text('{"trusted_folders": ["./work"]}')
+
+        load_project_config(str(project_root))
+
+        repo_key = str(project_root.resolve())
+        assert get("trusted_folders", repo=repo_key) == [
+            (project_root / "work").resolve()
+        ]
+
+    def test_load_config_raises_for_relative_trusted_folders(self, tmp_path):
+        """Non-rooted trusted_folders entries should raise during config load."""
+        from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG, DEFAULTS
+
+        _GLOBAL_CONFIG.clear()
+
+        config_path = tmp_path / "config.jsonc"
+        config_path.write_text('{"trusted_folders": ["relative/path"]}')
+
+        load_config(str(tmp_path))
+
+        assert get("trusted_folders") == DEFAULTS["trusted_folders"]
+
 
 # ── Config file validation ────────────────────────────────────────────────────
+
 
 class TestConfigValidation:
     """Test validate_config() function in config module."""
@@ -1020,13 +1174,13 @@ class TestJSONCEdgeCases:
         result = _strip_jsonc(text)
         parsed = json.loads(result)
         assert "\t" in parsed["text"]
-        
+
         # Test quote character (escaped in JSON as \")
         text = '{"text": "say \\"hello\\""}'
         result = _strip_jsonc(text)
         parsed = json.loads(result)
         assert '"' in parsed["text"]
-        
+
         # Test backslash character (escaped in JSON as \\)
         text = '{"path": "C:\\\\Users\\\\test"}'
         result = _strip_jsonc(text)
@@ -1342,6 +1496,24 @@ class TestAllConfigKeys:
                 load_config(tmpdir)
                 assert get(key) == ["item1", "item2"], f"Key {key} failed"
 
+    def test_all_list_keys_trusted_folders(self, tmp_path):
+        """trusted_folders requires absolute paths and is normalized on load."""
+        from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG
+
+        _GLOBAL_CONFIG.clear()
+        trusted1 = tmp_path / "trusted1"
+        trusted2 = tmp_path / "trusted2"
+        config_path = tmp_path / "config.jsonc"
+        config_path.write_text(
+            json.dumps({"trusted_folders": [str(trusted1), str(trusted2)]})
+        )
+
+        load_config(str(tmp_path))
+        assert get("trusted_folders") == [
+            trusted1.expanduser(),
+            trusted2.expanduser(),
+        ]
+
     def test_all_list_keys_languages(self):
         """Test languages list-typed config key with valid language names."""
         from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG
@@ -1372,7 +1544,7 @@ class TestAllConfigKeys:
         from src.jcodemunch_mcp.config import load_config, get, _GLOBAL_CONFIG, CONFIG_TYPES
 
         # Find all keys with tuple types that include None
-        nullable_keys = [k for k, v in CONFIG_TYPES.items() 
+        nullable_keys = [k for k, v in CONFIG_TYPES.items()
                         if isinstance(v, tuple) and type(None) in v]
 
         for key in nullable_keys:

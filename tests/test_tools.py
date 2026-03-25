@@ -1,6 +1,7 @@
 """Tests for tools module."""
 
 import json
+from pathlib import Path
 import pytest
 from unittest.mock import patch
 
@@ -44,9 +45,9 @@ def test_discover_source_files():
         {"path": "src/engine.cpp", "type": "blob", "size": 700},
         {"path": "include/engine.hpp", "type": "blob", "size": 350},
     ]
-    
+
     files, _, truncated = discover_source_files(tree_entries, gitignore_content=None)
-    
+
     assert "src/main.py" in files
     assert "src/utils.py" in files
     assert "src/engine.cpp" in files
@@ -62,7 +63,7 @@ def test_discover_source_files_respects_max():
         {"path": f"file{i}.py", "type": "blob", "size": 100}
         for i in range(1000)
     ]
-    
+
     files, _, truncated = discover_source_files(tree_entries, max_files=100)
     assert len(files) == 100
     assert truncated is True
@@ -77,7 +78,7 @@ def test_discover_source_files_prioritizes_src():
         {"path": f"src/file{i}.py", "type": "blob", "size": 100}
         for i in range(300)
     ]
-    
+
     files, _, truncated = discover_source_files(tree_entries, max_files=100)
     # Most files should be from src/
     src_count = sum(1 for f in files if f.startswith("src/"))
@@ -267,6 +268,269 @@ class TestFolderFileLimitEnvVar:
         finally:
             config_module._GLOBAL_CONFIG.clear()
             config_module._GLOBAL_CONFIG.update(orig_config)
+
+
+class TestTrustedFolders:
+    def test_trusted_broad_root_emits_warning_and_proceeds(self, tmp_path):
+        """An exact trusted broad root should bypass the safeguard with a warning."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    ["/work"] if key == "trusted_folders" else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=Path("/work"),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+            patch.object(
+                index_folder_module, "discover_local_files", return_value=([], [], {})
+            ),
+        ):
+            result = index_folder_module.index_folder(
+                str(tmp_path / "broad"),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "No source files found"
+        warnings = result.get("warnings", [])
+        assert any(
+            "matched trusted_folders and was allowed" in warning for warning in warnings
+        ), f"Expected trusted bypass warning, got: {warnings}"
+
+    def test_untrusted_broad_root_still_rejected(self, tmp_path):
+        """A broad root not in trusted_folders should still be rejected."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        broad_root = tmp_path / "broad"
+        broad_root.mkdir()
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    [] if key == "trusted_folders" else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=Path("/work"),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+        ):
+            result = index_folder_module.index_folder(
+                str(broad_root),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        assert "too broad to index safely" in result["error"]
+
+    def test_trusted_folder_matching_is_exact(self, tmp_path):
+        """A trusted folder should not trust sibling broad roots."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        sibling_root = tmp_path / "sibling"
+        sibling_root.mkdir()
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    ["/work"] if key == "trusted_folders" else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=Path("/work2"),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+        ):
+            result = index_folder_module.index_folder(
+                str(sibling_root),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        assert "not under trusted_folders" in result["error"]
+
+    def test_non_broad_trusted_descendant_skips_bypass_warning(self, tmp_path):
+        """A descendant under a trusted root should not need bypass logic once path depth is sufficient."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    ["/work"] if key == "trusted_folders" else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=Path("/work/project"),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+            patch.object(
+                index_folder_module, "discover_local_files", return_value=([], [], {})
+            ),
+        ):
+            result = index_folder_module.index_folder(
+                str(tmp_path / "project"),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "No source files found"
+        warnings = result.get("warnings", [])
+        assert not any(
+            "matched trusted_folders and was allowed" in warning for warning in warnings
+        )
+
+    def test_non_broad_untrusted_path_is_rejected_when_trusted_folders_configured(
+        self, tmp_path
+    ):
+        """When trusted_folders is set, untrusted current folders should be rejected even if not broad."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    ["/trusted-root"] if key == "trusted_folders" else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=Path("/project/src"),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+            patch.object(
+                index_folder_module, "discover_local_files", return_value=([], [], {})
+            ),
+        ):
+            result = index_folder_module.index_folder(
+                str(tmp_path / "project" / "src"),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        assert "not under trusted_folders" in result["error"]
+
+    def test_non_broad_paths_allow_indexing_when_trusted_folders_empty(self, tmp_path):
+        """Empty trusted_folders should allow non-broad paths to index normally."""
+        from jcodemunch_mcp.tools.index_folder import index_folder
+        from jcodemunch_mcp import config as config_module
+        import os
+
+        project_dir = tmp_path / "project" / "src"
+        project_dir.mkdir(parents=True)
+        (project_dir / "main.py").write_text("def hello():\n    return 1\n")
+
+        orig_global = config_module._GLOBAL_CONFIG.copy()
+        orig_projects = config_module._PROJECT_CONFIGS.copy()
+        orig_hashes = config_module._PROJECT_CONFIG_HASHES.copy()
+        orig_cwd = Path.cwd()
+
+        config_module._GLOBAL_CONFIG.clear()
+        config_module._GLOBAL_CONFIG.update(config_module.DEFAULTS)
+        config_module._GLOBAL_CONFIG["trusted_folders"] = []
+        config_module._PROJECT_CONFIGS.clear()
+        config_module._PROJECT_CONFIG_HASHES.clear()
+
+        try:
+            os.chdir(project_dir)
+            result = index_folder(
+                ".",
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+        finally:
+            os.chdir(orig_cwd)
+            config_module._GLOBAL_CONFIG.clear()
+            config_module._GLOBAL_CONFIG.update(orig_global)
+            config_module._PROJECT_CONFIGS.clear()
+            config_module._PROJECT_CONFIGS.update(orig_projects)
+            config_module._PROJECT_CONFIG_HASHES.clear()
+            config_module._PROJECT_CONFIG_HASHES.update(orig_hashes)
+
+        assert result["success"] is True, result
+
+    def test_trusted_folders_configured_untrusted_path_returns_trust_error(
+        self, tmp_path
+    ):
+        """Configured trusted_folders should reject an untrusted path before broad-path checks."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    ["/trusted-root"] if key == "trusted_folders" else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=Path("/project/src"),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+            patch.object(
+                index_folder_module, "discover_local_files", return_value=([], [], {})
+            ),
+        ):
+            result = index_folder_module.index_folder(
+                str(tmp_path / "project" / "src"),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        assert "not under trusted_folders" in result["error"]
 
     def test_legacy_env_var_still_works_for_folders(self, tmp_path):
         """JCODEMUNCH_MAX_INDEX_FILES should still cap index_folder when folder var unset."""
