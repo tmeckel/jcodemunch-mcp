@@ -252,6 +252,7 @@ The following env vars still work but are deprecated. Config file values take pr
 | Variable | Config key | Default |
 |----------|-----------|---------|
 | `JCODEMUNCH_USE_AI_SUMMARIES` | `use_ai_summaries` | `true` |
+| `JCODEMUNCH_TRUSTED_FOLDERS` | `trusted_folders` | `[]` |
 | `JCODEMUNCH_MAX_FOLDER_FILES` | `max_folder_files` | `2000` |
 | `JCODEMUNCH_MAX_INDEX_FILES` | `max_index_files` | `10000` |
 | `JCODEMUNCH_STALENESS_DAYS` | `staleness_days` | `7` |
