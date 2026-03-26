@@ -271,17 +271,17 @@ def load_config(storage_path: str | None = None) -> None:
                                     )
                             _GLOBAL_CONFIG[key] = valid_langs
                         elif key == "trusted_folders" and isinstance(value, list):
-                            valid_folders = []
+                            valid_folders = set()
                             for folder in value:
                                 expanded_folder = Path(folder).expanduser()
                                 if expanded_folder.is_absolute():
-                                    valid_folders.append(expanded_folder.resolve())
+                                    valid_folders.add(expanded_folder.resolve())
                                 else:
                                     raise ValueError(
                                         "Config key 'trusted_folders' contains non-absolute path "
                                         f"'{folder}'"
                                     )
-                            _GLOBAL_CONFIG[key] = valid_folders
+                            _GLOBAL_CONFIG[key] = list(valid_folders)
                         else:
                             _GLOBAL_CONFIG[key] = value
                         _explicit_keys.add(key)  # Track explicitly set keys
@@ -289,7 +289,9 @@ def load_config(storage_path: str | None = None) -> None:
                         logger.warning(
                             "Config key '%s' has invalid type. "
                             "Expected %s, got %s. Using default.",
-                            key, CONFIG_TYPES[key], type(value).__name__
+                            key,
+                            CONFIG_TYPES[key],
+                            type(value).__name__,
                         )
                     # Ignore unknown keys silently
         except json.JSONDecodeError as e:
@@ -478,7 +480,7 @@ def load_project_config(source_root: str) -> None:
                     if key in CONFIG_TYPES:
                         if _validate_type(key, value, CONFIG_TYPES[key]):
                             if key == "trusted_folders" and isinstance(value, list):
-                                valid_folders = []
+                                valid_folders = set()
                                 project_root = Path(source_root).resolve()
                                 for folder in value:
                                     if folder == "." or folder == "./":
@@ -517,8 +519,8 @@ def load_project_config(source_root: str) -> None:
                                         expanded_folder = (
                                             Path(folder).expanduser().resolve()
                                         )
-                                    valid_folders.append(expanded_folder)
-                                merged[key] = valid_folders
+                                    valid_folders.add(expanded_folder)
+                                merged[key] = list(valid_folders)
                             else:
                                 merged[key] = value
                         else:
