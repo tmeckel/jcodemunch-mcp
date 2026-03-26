@@ -479,20 +479,45 @@ def load_project_config(source_root: str) -> None:
                         if _validate_type(key, value, CONFIG_TYPES[key]):
                             if key == "trusted_folders" and isinstance(value, list):
                                 valid_folders = []
+                                project_root = Path(source_root).resolve()
                                 for folder in value:
-                                    if folder.startswith("./"):
+                                    if folder == "." or folder == "./":
+                                        expanded_folder = project_root
+                                    elif folder.startswith("./"):
                                         expanded_folder = (
-                                            Path(source_root) / folder[2:]
-                                        ).expanduser()
-                                    else:
-                                        expanded_folder = Path(folder).expanduser()
-                                    if expanded_folder.is_absolute():
-                                        valid_folders.append(expanded_folder.resolve())
-                                    else:
-                                        raise ValueError(
-                                            "Project config key 'trusted_folders' contains non-absolute path "
-                                            f"'{folder}'"
+                                            (project_root / folder[2:])
+                                            .expanduser()
+                                            .resolve()
                                         )
+                                        if (
+                                            expanded_folder != project_root
+                                            and project_root
+                                            not in expanded_folder.parents
+                                        ):
+                                            raise ValueError(
+                                                "Project config key 'trusted_folders' entry escapes project root "
+                                                f"'{folder}'"
+                                            )
+                                    elif not Path(folder).expanduser().is_absolute():
+                                        expanded_folder = (
+                                            (project_root / folder)
+                                            .expanduser()
+                                            .resolve()
+                                        )
+                                        if (
+                                            expanded_folder != project_root
+                                            and project_root
+                                            not in expanded_folder.parents
+                                        ):
+                                            raise ValueError(
+                                                "Project config key 'trusted_folders' entry escapes project root "
+                                                f"'{folder}'"
+                                            )
+                                    else:
+                                        expanded_folder = (
+                                            Path(folder).expanduser().resolve()
+                                        )
+                                    valid_folders.append(expanded_folder)
                                 merged[key] = valid_folders
                             else:
                                 merged[key] = value
