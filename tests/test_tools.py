@@ -1,6 +1,7 @@
 """Tests for tools module."""
 
 import json
+import sys
 from pathlib import Path
 import pytest
 from unittest.mock import patch
@@ -11,6 +12,19 @@ from jcodemunch_mcp.tools.index_repo import (
     should_skip_file,
 )
 from jcodemunch_mcp.security import MAX_INDEX_FILES_ENV_VAR, MAX_FOLDER_FILES_ENV_VAR
+
+
+def _platform_path(unix_path: str) -> Path:
+    """Convert Unix-style path to platform-appropriate path for testing.
+
+    On Unix: returns Path(unix_path) unchanged.
+    On Windows: converts "/work" to "C:/work" to ensure is_absolute() is True.
+    """
+    if sys.platform == "win32":
+        # Convert /work -> C:/work, /other -> C:/other, etc.
+        if unix_path.startswith("/"):
+            return Path("C:" + unix_path.replace("/", "\\"))
+    return Path(unix_path)
 
 
 def test_parse_github_url_full():
@@ -286,6 +300,8 @@ class TestTrustedFolders:
         from jcodemunch_mcp.tools import index_folder as index_folder_module
         from unittest.mock import patch
 
+        trusted_path = str(_platform_path("/work"))
+
         with (
             patch.object(
                 index_folder_module._config, "load_project_config", return_value=None
@@ -294,12 +310,12 @@ class TestTrustedFolders:
                 index_folder_module._config,
                 "get",
                 side_effect=lambda key, default=None, repo=None: (
-                    ["/work"] if key == "trusted_folders" else default
+                    [trusted_path] if key == "trusted_folders" else default
                 ),
             ),
             patch(
                 "jcodemunch_mcp.tools.index_folder.Path.resolve",
-                return_value=Path("/work"),
+                return_value=_platform_path("/work"),
             ),
             patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
             patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
@@ -341,7 +357,7 @@ class TestTrustedFolders:
             ),
             patch(
                 "jcodemunch_mcp.tools.index_folder.Path.resolve",
-                return_value=Path("/work"),
+                return_value=_platform_path("/work"),
             ),
             patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
             patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
@@ -363,6 +379,8 @@ class TestTrustedFolders:
         sibling_root = tmp_path / "sibling"
         sibling_root.mkdir()
 
+        trusted_path = str(_platform_path("/work"))
+
         with (
             patch.object(
                 index_folder_module._config, "load_project_config", return_value=None
@@ -371,12 +389,12 @@ class TestTrustedFolders:
                 index_folder_module._config,
                 "get",
                 side_effect=lambda key, default=None, repo=None: (
-                    ["/work"] if key == "trusted_folders" else default
+                    [trusted_path] if key == "trusted_folders" else default
                 ),
             ),
             patch(
                 "jcodemunch_mcp.tools.index_folder.Path.resolve",
-                return_value=Path("/work2"),
+                return_value=_platform_path("/work2"),
             ),
             patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
             patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
@@ -395,6 +413,12 @@ class TestTrustedFolders:
         from jcodemunch_mcp.tools import index_folder as index_folder_module
         from unittest.mock import patch
 
+        project_path = tmp_path / "project" / "src"
+        project_path.mkdir(parents=True)
+        (project_path / "main.py").write_text("def hello():\n    return 1\n")
+
+        trusted_path = str(_platform_path("/work"))
+
         with (
             patch.object(
                 index_folder_module._config, "load_project_config", return_value=None
@@ -403,7 +427,7 @@ class TestTrustedFolders:
                 index_folder_module._config,
                 "get",
                 side_effect=lambda key, default=None, repo=None: (
-                    ["/work"] if key == "trusted_folders" else default
+                    [trusted_path] if key == "trusted_folders" else default
                 ),
             ),
             patch(
@@ -436,6 +460,8 @@ class TestTrustedFolders:
         from jcodemunch_mcp.tools import index_folder as index_folder_module
         from unittest.mock import patch
 
+        trusted_path = str(_platform_path("/trusted-root"))
+
         with (
             patch.object(
                 index_folder_module._config, "load_project_config", return_value=None
@@ -444,12 +470,12 @@ class TestTrustedFolders:
                 index_folder_module._config,
                 "get",
                 side_effect=lambda key, default=None, repo=None: (
-                    ["/trusted-root"] if key == "trusted_folders" else default
+                    [trusted_path] if key == "trusted_folders" else default
                 ),
             ),
             patch(
                 "jcodemunch_mcp.tools.index_folder.Path.resolve",
-                return_value=Path("/project/src"),
+                return_value=_platform_path("/project/src"),
             ),
             patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
             patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
@@ -512,6 +538,8 @@ class TestTrustedFolders:
         from jcodemunch_mcp.tools import index_folder as index_folder_module
         from unittest.mock import patch
 
+        trusted_path = str(_platform_path("/trusted-root"))
+
         with (
             patch.object(
                 index_folder_module._config, "load_project_config", return_value=None
@@ -520,12 +548,12 @@ class TestTrustedFolders:
                 index_folder_module._config,
                 "get",
                 side_effect=lambda key, default=None, repo=None: (
-                    ["/trusted-root"] if key == "trusted_folders" else default
+                    [trusted_path] if key == "trusted_folders" else default
                 ),
             ),
             patch(
                 "jcodemunch_mcp.tools.index_folder.Path.resolve",
-                return_value=Path("/project/src"),
+                return_value=_platform_path("/project/src"),
             ),
             patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
             patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
@@ -779,6 +807,8 @@ class TestTrustedFolders:
         broad_root = tmp_path / "work"
         broad_root.mkdir()
 
+        trusted_path = str(_platform_path("/work"))
+
         with (
             patch.object(
                 index_folder_module._config, "load_project_config", return_value=None
@@ -787,7 +817,7 @@ class TestTrustedFolders:
                 index_folder_module._config,
                 "get",
                 side_effect=lambda key, default=None, repo=None: (
-                    ["/work"]
+                    [trusted_path]
                     if key == "trusted_folders"
                     else False
                     if key == "trusted_folders_whitelist_mode"
@@ -796,7 +826,7 @@ class TestTrustedFolders:
             ),
             patch(
                 "jcodemunch_mcp.tools.index_folder.Path.resolve",
-                return_value=Path("/work"),
+                return_value=_platform_path("/work"),
             ),
             patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
             patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
@@ -818,6 +848,8 @@ class TestTrustedFolders:
 
         index_folder_module._is_trusted.cache_clear()
 
+        other_path = str(_platform_path("/other"))
+
         with (
             patch.object(
                 index_folder_module._config, "load_project_config", return_value=None
@@ -826,7 +858,7 @@ class TestTrustedFolders:
                 index_folder_module._config,
                 "get",
                 side_effect=lambda key, default=None, repo=None: (
-                    ["/other"]
+                    [other_path]
                     if key == "trusted_folders"
                     else False
                     if key == "trusted_folders_whitelist_mode"
@@ -835,7 +867,7 @@ class TestTrustedFolders:
             ),
             patch(
                 "jcodemunch_mcp.tools.index_folder.Path.resolve",
-                return_value=Path("/work"),
+                return_value=_platform_path("/work"),
             ),
             patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
             patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
