@@ -614,7 +614,7 @@ function Read-HookInput {
 function Write-HookLog {
     <#
     .SYNOPSIS
-    Appends a timestamped log line. Only writes when $env:JCODEMUNCH -eq '1'.
+    Appends a timestamped log line. Only writes when $env:JCODEMUNCH_DEBUG -eq '1'.
     #>
     param(
         [Parameter(Mandatory)]
