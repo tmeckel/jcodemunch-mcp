@@ -1,30 +1,17 @@
 """Tests for tools module."""
 
 import json
-import sys
 from pathlib import Path
 import pytest
 from unittest.mock import patch
 
+from tests import _platform_path
 from jcodemunch_mcp.tools.index_repo import (
     parse_github_url,
     discover_source_files,
     should_skip_file,
 )
 from jcodemunch_mcp.security import MAX_INDEX_FILES_ENV_VAR, MAX_FOLDER_FILES_ENV_VAR
-
-
-def _platform_path(unix_path: str) -> Path:
-    """Convert Unix-style path to platform-appropriate path for testing.
-
-    On Unix: returns Path(unix_path) unchanged.
-    On Windows: converts "/work" to "C:/work" to ensure is_absolute() is True.
-    """
-    if sys.platform == "win32":
-        # Convert /work -> C:/work, /other -> C:/other, etc.
-        if unix_path.startswith("/"):
-            return Path("C:" + unix_path.replace("/", "\\"))
-    return Path(unix_path)
 
 
 def test_parse_github_url_full():
@@ -432,7 +419,7 @@ class TestTrustedFolders:
             ),
             patch(
                 "jcodemunch_mcp.tools.index_folder.Path.resolve",
-                return_value=Path("/work/project"),
+                return_value=_platform_path("/work/project"),
             ),
             patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
             patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
