@@ -9,10 +9,11 @@ def _platform_path(unix_path: str) -> Path:
 
     On Unix: returns Path(unix_path) unchanged.
     On Windows: converts "/work" to "C:/work" to ensure is_absolute() is True.
+    Uses forward slashes on Windows which are valid in JSON and accepted by Windows.
     """
     if sys.platform == "win32":
         if unix_path.startswith("/"):
-            return Path("C:" + unix_path.replace("/", "/"))
+            return Path("C:" + unix_path)
     return Path(unix_path)
 
 
