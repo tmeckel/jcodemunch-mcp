@@ -60,8 +60,7 @@ def test_discover_source_files():
 def test_discover_source_files_respects_max():
     """Test that max_files limit is respected."""
     tree_entries = [
-        {"path": f"file{i}.py", "type": "blob", "size": 100}
-        for i in range(1000)
+        {"path": f"file{i}.py", "type": "blob", "size": 100} for i in range(1000)
     ]
 
     files, _, truncated = discover_source_files(tree_entries, max_files=100)
@@ -72,12 +71,8 @@ def test_discover_source_files_respects_max():
 def test_discover_source_files_prioritizes_src():
     """Test that src/ files are prioritized."""
     tree_entries = [
-        {"path": f"other/file{i}.py", "type": "blob", "size": 100}
-        for i in range(300)
-    ] + [
-        {"path": f"src/file{i}.py", "type": "blob", "size": 100}
-        for i in range(300)
-    ]
+        {"path": f"other/file{i}.py", "type": "blob", "size": 100} for i in range(300)
+    ] + [{"path": f"src/file{i}.py", "type": "blob", "size": 100} for i in range(300)]
 
     files, _, truncated = discover_source_files(tree_entries, max_files=100)
     # Most files should be from src/
@@ -91,8 +86,7 @@ def test_discover_source_files_uses_config_override():
     from jcodemunch_mcp import config as config_module
 
     tree_entries = [
-        {"path": f"file{i}.py", "type": "blob", "size": 100}
-        for i in range(20)
+        {"path": f"file{i}.py", "type": "blob", "size": 100} for i in range(20)
     ]
 
     orig_config = config_module._GLOBAL_CONFIG.copy()
@@ -114,8 +108,7 @@ def test_discover_source_files_explicit_max_overrides_config():
     from jcodemunch_mcp import config as config_module
 
     tree_entries = [
-        {"path": f"file{i}.py", "type": "blob", "size": 100}
-        for i in range(20)
+        {"path": f"file{i}.py", "type": "blob", "size": 100} for i in range(20)
     ]
 
     orig_config = config_module._GLOBAL_CONFIG.copy()
@@ -135,8 +128,7 @@ def test_discover_source_files_explicit_max_overrides_config():
 def test_discover_source_files_exact_limit_is_not_truncated():
     """An exact match to the limit should not be reported as truncation."""
     tree_entries = [
-        {"path": f"file{i}.py", "type": "blob", "size": 100}
-        for i in range(5)
+        {"path": f"file{i}.py", "type": "blob", "size": 100} for i in range(5)
     ]
 
     files, _, truncated = discover_source_files(tree_entries, max_files=5)
@@ -147,33 +139,45 @@ def test_discover_source_files_exact_limit_is_not_truncated():
 
 # --- has_index / version mismatch ---
 
+
 class TestHasIndex:
     def test_returns_false_when_no_index(self, tmp_path):
         from jcodemunch_mcp.storage.index_store import IndexStore
+
         store = IndexStore(base_path=str(tmp_path))
         assert store.has_index("local", "myrepo") is False
 
     def test_returns_true_after_save(self, tmp_path):
         from jcodemunch_mcp.storage.index_store import IndexStore
+
         store = IndexStore(base_path=str(tmp_path))
         store.save_index(
-            owner="local", name="myrepo",
-            source_files=[], symbols=[], raw_files={},
+            owner="local",
+            name="myrepo",
+            source_files=[],
+            symbols=[],
+            raw_files={},
         )
         assert store.has_index("local", "myrepo") is True
 
     def test_returns_true_for_future_version_index(self, tmp_path):
         """has_index should return True even when load_index rejects a future version."""
         from jcodemunch_mcp.storage.index_store import IndexStore, INDEX_VERSION
+
         store = IndexStore(base_path=str(tmp_path))
         # Write a fake index with a version newer than current
         index_path = store._index_path("local", "myrepo")
         index_path.write_text(
-            json.dumps({"index_version": INDEX_VERSION + 1, "indexed_at": "2099-01-01T00:00:00"}),
+            json.dumps(
+                {
+                    "index_version": INDEX_VERSION + 1,
+                    "indexed_at": "2099-01-01T00:00:00",
+                }
+            ),
             encoding="utf-8",
         )
         assert store.load_index("local", "myrepo") is None  # rejected
-        assert store.has_index("local", "myrepo") is True   # file still there
+        assert store.has_index("local", "myrepo") is True  # file still there
 
 
 class TestVersionMismatchWarning:
@@ -191,11 +195,17 @@ class TestVersionMismatchWarning:
         (src_dir / "main.py").write_text("def hello(): pass\n")
 
         import hashlib
+
         digest = hashlib.sha1(str(src_dir.resolve()).encode("utf-8")).hexdigest()[:8]
         repo_name = f"{src_dir.name}-{digest}"
         index_path = store._index_path("local", repo_name)
         index_path.write_text(
-            json.dumps({"index_version": INDEX_VERSION + 1, "indexed_at": "2099-01-01T00:00:00"}),
+            json.dumps(
+                {
+                    "index_version": INDEX_VERSION + 1,
+                    "indexed_at": "2099-01-01T00:00:00",
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -636,3 +646,214 @@ class TestTrustedFolders:
         # When trusted_folders is empty [], all paths are allowed (non-broad)
         # The project has 3+ path components, so it should succeed
         assert result["success"] is True, result
+
+    def test_blacklist_mode_empty_list_returns_error(self, tmp_path):
+        """Blacklist mode with empty list should return helpful error."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        index_folder_module._is_trusted.cache_clear()
+
+        broad_root = tmp_path / "broad"
+        broad_root.mkdir()
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    []
+                    if key == "trusted_folders"
+                    else False
+                    if key == "trusted_folders_whitelist_mode"
+                    else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=broad_root.resolve(),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+        ):
+            result = index_folder_module.index_folder(
+                str(broad_root),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        assert "trusted_folders_whitelist_mode is False" in result["error"]
+        assert "blacklist mode" in result["error"]
+        assert "empty" in result["error"]
+
+    def test_blacklist_mode_listed_path_untrusted(self, tmp_path):
+        """Blacklist mode: paths in list should be untrusted."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        index_folder_module._is_trusted.cache_clear()
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        src_dir = project_root / "src"
+        src_dir.mkdir()
+        (src_dir / "main.py").write_text("def hello():\n    return 1\n")
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    [str(project_root)]
+                    if key == "trusted_folders"
+                    else False
+                    if key == "trusted_folders_whitelist_mode"
+                    else default
+                ),
+            ),
+        ):
+            result = index_folder_module.index_folder(
+                str(src_dir),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        assert "not under trusted_folders" in result["error"]
+
+    def test_blacklist_mode_unlisted_path_trusted(self, tmp_path):
+        """Blacklist mode: paths NOT in list should be trusted."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        index_folder_module._is_trusted.cache_clear()
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        src_dir = project_root / "src"
+        src_dir.mkdir()
+        (src_dir / "main.py").write_text("def hello():\n    return 1\n")
+
+        other_root = tmp_path / "other"
+        other_root.mkdir()
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    [str(other_root)]
+                    if key == "trusted_folders"
+                    else False
+                    if key == "trusted_folders_whitelist_mode"
+                    else default
+                ),
+            ),
+        ):
+            result = index_folder_module.index_folder(
+                str(src_dir),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        # src_dir is NOT in the blacklist, so it should be trusted and succeed
+        assert result["success"] is True, result
+
+    def test_blacklist_mode_broad_listed_untrusted(self, tmp_path):
+        """Blacklist mode: broad path in list should get trust error (Step 1 fires first)."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        index_folder_module._is_trusted.cache_clear()
+
+        broad_root = tmp_path / "work"
+        broad_root.mkdir()
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    ["/work"]
+                    if key == "trusted_folders"
+                    else False
+                    if key == "trusted_folders_whitelist_mode"
+                    else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=Path("/work"),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+        ):
+            result = index_folder_module.index_folder(
+                str(broad_root),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        assert result["success"] is False
+        # Trust error, not broad error (proves Step 1 precedes broad check)
+        assert "not under trusted_folders" in result["error"]
+
+    def test_blacklist_mode_broad_unlisted_trusted(self, tmp_path):
+        """Blacklist mode: broad path NOT in list should get bypass warning."""
+        from jcodemunch_mcp.tools import index_folder as index_folder_module
+        from unittest.mock import patch
+
+        index_folder_module._is_trusted.cache_clear()
+
+        with (
+            patch.object(
+                index_folder_module._config, "load_project_config", return_value=None
+            ),
+            patch.object(
+                index_folder_module._config,
+                "get",
+                side_effect=lambda key, default=None, repo=None: (
+                    ["/other"]
+                    if key == "trusted_folders"
+                    else False
+                    if key == "trusted_folders_whitelist_mode"
+                    else default
+                ),
+            ),
+            patch(
+                "jcodemunch_mcp.tools.index_folder.Path.resolve",
+                return_value=Path("/work"),
+            ),
+            patch("jcodemunch_mcp.tools.index_folder.Path.exists", return_value=True),
+            patch("jcodemunch_mcp.tools.index_folder.Path.is_dir", return_value=True),
+            patch.object(
+                index_folder_module, "discover_local_files", return_value=([], [], {})
+            ),
+        ):
+            result = index_folder_module.index_folder(
+                str(tmp_path / "work"),
+                use_ai_summaries=False,
+                storage_path=str(tmp_path / "store"),
+            )
+
+        # /work is NOT in blacklist, so it's trusted
+        # Broad path + trusted = bypass warning
+        assert result["success"] is False
+        assert result["error"] == "No source files found"
+        warnings = result.get("warnings", [])
+        assert any("would normally be rejected as too broad" in w for w in warnings), (
+            f"Expected broad bypass warning, got: {warnings}"
+        )
